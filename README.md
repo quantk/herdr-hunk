@@ -1,7 +1,7 @@
 <h1 align="center">Herdr Hunk Review</h1>
 
 <p align="center">
-  Review agent-authored changes in Hunk and send inline feedback back to the
+  Review agent-authored changes in Hunk and draft inline feedback for the
   correct agent without leaving Herdr.
 </p>
 
@@ -19,6 +19,7 @@
   <a href="#installation">Installation</a> ·
   <a href="#agent-assisted-setup">Agent setup</a> ·
   <a href="#configure-keyboard-shortcuts">Configuration</a> ·
+  <a href="#customize-the-feedback-prompt">Prompt template</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
@@ -29,7 +30,7 @@ Herdr Hunk Review connects three parts of the coding workflow:
 
 1. a coding agent running in a Herdr pane;
 2. a live [Hunk](https://github.com/modem-dev/hunk) diff review;
-3. the inline notes you want to send back to that exact agent.
+3. the inline notes you want to draft for that exact agent.
 
 The review follows working-tree changes in real time. A single shortcut toggles
 the Hunk pane without terminating its session, so comments remain available
@@ -41,7 +42,7 @@ while the review is hidden.
 - Associates every review with its source agent and Git repository.
 - Toggles the same Hunk session between a visible split and a background tab.
 - Preserves Hunk comments while the review is hidden.
-- Sends only human review notes back to the agent.
+- Drafts only human review notes in the agent input without submitting them.
 - Resolves the correct review from the Hunk pane, source agent, or another pane
   in the same Git repository.
 - Supports multiple agents, repositories, workspaces, and concurrent reviews.
@@ -66,8 +67,8 @@ Preserve unrelated settings, avoid duplicate keybindings, validate the final
 config, reload it, and report exactly what was changed.
 ```
 
-The guide also prevents the setup agent from opening test reviews or sending
-test prompts to agents that are already running.
+The guide also prevents the setup agent from opening test reviews or inserting
+test prompts into agents that are already running.
 
 Prefer to see every step or use custom shortcuts? Continue with the manual
 installation below.
@@ -123,7 +124,7 @@ herdr plugin action list --plugin quantick.hunk-review
 The action list should contain:
 
 - `open-review` — toggle the Hunk review;
-- `send-notes` — send human notes to the associated agent.
+- `send-notes` — draft human notes for the associated agent.
 
 ### Link a local checkout
 
@@ -161,7 +162,7 @@ description = "Toggle Hunk review"
 key = "f7"
 type = "plugin_action"
 command = "quantick.hunk-review.send-notes"
-description = "Send Hunk notes to agent"
+description = "Draft Hunk notes for agent"
 ```
 
 Validate and reload the configuration:
@@ -177,6 +178,42 @@ If an already attached client does not pick up the new shortcuts, press
 The examples use `F6` and `F7`, but any valid Herdr key combination can be
 used. Function keys are a reliable default because many terminals intercept
 `Alt`-based combinations.
+
+## Customize the feedback prompt
+
+The plugin includes an English default prompt. To customize its wording, find
+the plugin configuration directory:
+
+```sh
+herdr plugin config-dir quantick.hunk-review
+```
+
+Create `prompt-template.md` in the printed directory. You can start from the
+[example template](examples/prompt-template.md):
+
+```md
+I finished reviewing your changes in Hunk.
+Repository: {{repository}}
+
+Address all {{note_count}} review notes below.
+
+{{notes}}
+
+After addressing the notes, run the relevant checks and summarize the result.
+```
+
+Supported placeholders:
+
+| Placeholder | Value |
+| --- | --- |
+| `{{repository}}` | Absolute Git repository root |
+| `{{notes}}` | Numbered notes with file and line or hunk locations |
+| `{{note_count}}` | Number of saved human notes |
+
+`{{notes}}` is required. Unknown placeholders and an empty template produce an
+actionable error instead of inserting a partial prompt. The template is read
+each time `F7` runs, so it can be changed without reinstalling the plugin or
+restarting Herdr.
 
 ## Usage
 
@@ -197,7 +234,7 @@ Navigate to the relevant change in Hunk and press `c` to create a human note.
 Use the controls shown in the note editor to save it. Press `?` in Hunk to see
 the complete key reference.
 
-Only saved human notes are sent. An unfinished draft is not included.
+Only saved human notes are included. An unfinished Hunk note is not included.
 
 ### 3. Hide or restore the review
 
@@ -212,7 +249,7 @@ position, and comments remain alive.
 Do not use Herdr's pane-close shortcut (`Ctrl+B`, then `x`) when you only want
 to hide the review. That command terminates the pane.
 
-### 4. Send notes to the agent
+### 4. Draft notes for the agent
 
 Press:
 
@@ -230,9 +267,12 @@ F7
 When multiple reviews are active and the current pane does not identify a
 repository, focus the intended Hunk or source agent before pressing `F7`.
 
-The plugin sends all saved human notes as one structured prompt containing the
-repository, file paths, line or hunk locations, and note text. AI and agent
-annotations are excluded. The generated prompt has a 128 KiB safety limit.
+The plugin focuses the associated agent and inserts all saved human notes as
+one structured draft containing the repository, file paths, line or hunk
+locations, and note text. AI and agent annotations are excluded. The draft is
+not submitted: review or edit it, then press Enter yourself. Existing text in
+the agent input is not cleared; the draft is inserted at the current cursor.
+The generated prompt has a 128 KiB safety limit.
 
 ## How review association works
 
@@ -280,6 +320,16 @@ The agent must be working inside a Git repository.
 
 The note must be saved in Hunk before pressing `F7`. Draft text is not included
 in the Hunk session snapshot.
+
+### The custom prompt template is rejected
+
+Make sure `prompt-template.md` is non-empty, contains `{{notes}}`, and uses only
+the supported placeholders listed above. Inspect the active configuration
+directory with:
+
+```sh
+herdr plugin config-dir quantick.hunk-review
+```
 
 ### Several reviews are running
 
@@ -395,7 +445,7 @@ F7 / send-notes
     │
     ├── resolve the matching live review
     ├── collect saved human notes
-    └── prompt the associated Herdr agent
+    └── insert a configurable draft without submitting it
 ```
 
 The plugin is implemented as out-of-process Node.js actions declared in

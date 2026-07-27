@@ -9,7 +9,7 @@ Herdr Hunk Review is a Herdr workflow plugin that:
 - opens a live Hunk diff beside a detected coding agent;
 - keeps one review associated with its source agent and Git repository;
 - hides and restores the same live Hunk pane without losing session state;
-- sends saved human review notes back to the correct agent.
+- inserts saved human review notes into the correct agent input as a draft.
 
 The plugin is implemented with Node.js ES modules and declarative entries in
 `herdr-plugin.toml`. It supports Linux and macOS.
@@ -19,7 +19,8 @@ The plugin is implemented with Node.js ES modules and declarative entries in
 - `herdr-plugin.toml` — plugin identity, version, actions, and pane entrypoint.
 - `src/open-review.mjs` — `F6` toggle action and review association.
 - `src/review-pane.mjs` — live Hunk process and snapshot lifecycle.
-- `src/send-notes.mjs` — `F7` review resolution and agent prompt delivery.
+- `src/send-notes.mjs` — `F7` review resolution and agent draft insertion.
+- `src/herdr-api.mjs` — bracketed-paste-aware Herdr socket input without Enter.
 - `src/common.mjs` — shared state, matching, formatting, and version-independent
   helpers.
 - `test/` — Node.js unit tests.
@@ -32,16 +33,18 @@ The plugin is implemented with Node.js ES modules and declarative entries in
 1. Preserve the association between a review, its source agent pane, and its
    Git repository.
 2. Never send AI or unrelated agent annotations as human feedback.
-3. Do not terminate the Hunk process when implementing hide/show behavior.
-4. Treat stale Herdr pane records as inactive.
-5. Avoid guessing between multiple active reviews. Prefer exact pane, agent,
+3. Never submit the generated feedback prompt automatically; leave it in the
+   agent input for the user to review and send.
+4. Do not terminate the Hunk process when implementing hide/show behavior.
+5. Treat stale Herdr pane records as inactive.
+6. Avoid guessing between multiple active reviews. Prefer exact pane, agent,
    workspace, and repository matches.
-6. Keep plugin actions non-interactive and report actionable errors on stderr.
-7. Do not modify a user's Git working tree as part of review actions.
-8. Keep the plugin dependency-free unless a dependency has a clear operational
+7. Keep plugin actions non-interactive and report actionable errors on stderr.
+8. Do not modify a user's Git working tree as part of review actions.
+9. Keep the plugin dependency-free unless a dependency has a clear operational
    benefit.
-9. Maintain compatibility with Node.js 18.
-10. Update README and `agent-guide.md` whenever installation, shortcuts, or
+10. Maintain compatibility with Node.js 18.
+11. Update README and `agent-guide.md` whenever installation, shortcuts, or
     user-visible workflow behavior changes.
 
 ## Required checks

@@ -2,7 +2,7 @@ id = "quantick.hunk-review"
 name = "Hunk Review"
 version = "0.1.0"
 min_herdr_version = "0.7.0"
-description = "Review agent-authored changes in Hunk and send human notes back to the agent."
+description = "Review agent-authored changes in Hunk and draft human feedback for the agent."
 platforms = ["linux", "macos"]
 
 [[actions]]
@@ -14,8 +14,8 @@ command = ["node", "src/open-review.mjs"]
 
 [[actions]]
 id = "send-notes"
-title = "Send Hunk notes to agent"
-description = "Send human review notes from the matching Hunk session back to its agent."
+title = "Draft Hunk notes for agent"
+description = "Insert human review notes into the matching agent input without submitting."
 contexts = ["pane"]
 command = ["node", "src/send-notes.mjs"]
 

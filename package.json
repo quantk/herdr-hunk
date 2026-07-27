@@ -8,7 +8,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "check": "node --check src/common.mjs && node --check src/open-review.mjs && node --check src/review-pane.mjs && node --check src/send-notes.mjs",
+    "check": "node --check src/common.mjs && node --check src/herdr-api.mjs && node --check src/open-review.mjs && node --check src/review-pane.mjs && node --check src/send-notes.mjs",
     "test": "node --test",
     "version:check": "node scripts/check-version.mjs",
     "release:prepare": "node scripts/set-version.mjs"

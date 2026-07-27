@@ -12,7 +12,7 @@ Leave the user with:
 - Node.js 18 or newer;
 - Hunk 0.17.6 or newer;
 - the `quantick.hunk-review` plugin installed and enabled;
-- working shortcuts for toggling a review and sending notes;
+- working shortcuts for toggling a review and drafting notes;
 - a valid, reloaded Herdr configuration.
 
 Supported platforms are Linux and macOS.
@@ -107,7 +107,7 @@ description = "Toggle Hunk review"
 key = "f7"
 type = "plugin_action"
 command = "quantick.hunk-review.send-notes"
-description = "Send Hunk notes to agent"
+description = "Draft Hunk notes for agent"
 ```
 
 If equivalent entries already exist, leave them unchanged. If the actions are
@@ -138,10 +138,23 @@ Tell the user:
 2. Press `F6` to open Hunk beside the agent.
 3. Press `c` in Hunk to create and save inline human notes.
 4. Press `F6` again to hide the live Hunk pane without terminating its session.
-5. Press `F7` to send saved notes to the associated agent.
+5. Press `F7` to insert the saved notes into the associated agent input.
+6. Review or edit the draft, then press Enter to submit it yourself.
 
 `F7` works from the Hunk pane, its source agent, another pane in the same Git
 repository, or any pane when only one review is active.
+
+The plugin does not submit the draft automatically and does not clear existing
+agent input. It uses the English built-in prompt unless the user creates
+`prompt-template.md` in the directory printed by:
+
+```sh
+herdr plugin config-dir quantick.hunk-review
+```
+
+The custom template must contain `{{notes}}`. It may also use
+`{{repository}}` and `{{note_count}}`. Do not create a custom template unless
+the user requests different wording.
 
 Warn the user that Herdr's pane-close shortcut (`Ctrl+B`, then `x`) terminates
 the Hunk pane. `F6` is the session-preserving hide/show toggle.
@@ -157,5 +170,5 @@ Finish with a concise report containing:
 - whether configuration reload succeeded;
 - any remaining manual action, such as reloading the attached client.
 
-Do not open a review or send a prompt to an agent merely as a setup test. The
-user should trigger the first real review.
+Do not open a review or insert a prompt into an agent merely as a setup test.
+The user should trigger the first real review.

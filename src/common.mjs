@@ -10,6 +10,15 @@ import { dirname, join } from "node:path";
 export const PLUGIN_ID = "quantick.hunk-review";
 export const STATE_FILE = "reviews.json";
 export const RESTORED_USER_AUTHOR = "user (restored)";
+export const PROMPT_TEMPLATE_FILE = "prompt-template.md";
+export const DEFAULT_PROMPT_TEMPLATE = `I finished reviewing your changes in Hunk.
+Repository: {{repository}}
+
+Address all review notes below. Verify each note against the current code first. If a note is outdated or conflicts with the task, explain why instead of changing the code blindly.
+
+{{notes}}
+
+After addressing the notes, run the relevant checks and briefly summarize what changed for each note.`;
 
 export function parseContext(raw) {
   if (!raw) {
@@ -272,25 +281,79 @@ export function formatNoteLocation(note) {
   return parts.join(", ");
 }
 
-export function buildAgentPrompt(notes, repo) {
+export function loadPromptTemplate(configDir) {
+  if (!configDir) {
+    return DEFAULT_PROMPT_TEMPLATE;
+  }
+
+  const path = join(configDir, PROMPT_TEMPLATE_FILE);
+  try {
+    const template = readFileSync(path, "utf8").trim();
+    if (!template) {
+      throw new Error(`${PROMPT_TEMPLATE_FILE} is empty.`);
+    }
+    return template;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return DEFAULT_PROMPT_TEMPLATE;
+    }
+    if (
+      error instanceof Error &&
+      error.message === `${PROMPT_TEMPLATE_FILE} is empty.`
+    ) {
+      throw error;
+    }
+    throw new Error(`Cannot read ${PROMPT_TEMPLATE_FILE}: ${error.message}`);
+  }
+}
+
+export function buildAgentPrompt(
+  notes,
+  repo,
+  template = DEFAULT_PROMPT_TEMPLATE,
+) {
   const renderedNotes = notes.map((note, index) => {
     const title = note.title ? ` — ${note.title}` : "";
     return [
       `### ${index + 1}. ${formatNoteLocation(note)}${title}`,
       note.body.trim(),
     ].join("\n");
-  });
+  }).join("\n\n");
 
-  return [
-    "Я завершил ревью твоих изменений в Hunk.",
-    `Репозиторий: ${repo}`,
-    "",
-    "Исправь все замечания ниже. Сначала проверь каждое замечание по текущему коду; если какое-то уже неактуально или противоречит задаче, объясни это вместо слепого изменения.",
-    "",
-    ...renderedNotes,
-    "",
-    "После исправлений запусти релевантные проверки и кратко перечисли, что было изменено по каждому замечанию.",
-  ].join("\n");
+  if (!template.includes("{{notes}}")) {
+    throw new Error(
+      `${PROMPT_TEMPLATE_FILE} must contain the {{notes}} placeholder.`,
+    );
+  }
+
+  const supportedPlaceholders = new Set([
+    "repository",
+    "notes",
+    "note_count",
+  ]);
+  const unknownPlaceholders = [
+    ...new Set(
+      [...template.matchAll(/\{\{([^{}]+)\}\}/g)]
+        .map((match) => match[1])
+        .filter((name) => !supportedPlaceholders.has(name)),
+    ),
+  ];
+  if (unknownPlaceholders.length > 0) {
+    throw new Error(
+      `${PROMPT_TEMPLATE_FILE} contains unknown placeholder${unknownPlaceholders.length === 1 ? "" : "s"}: ${unknownPlaceholders.map((name) => `{{${name}}}`).join(", ")}.`,
+    );
+  }
+
+  const replacements = {
+    repository: repo,
+    notes: renderedNotes,
+    note_count: String(notes.length),
+  };
+  return Object.entries(replacements).reduce(
+    (prompt, [name, value]) =>
+      prompt.replaceAll(`{{${name}}}`, value),
+    template,
+  );
 }
 
 export function describeCommandFailure(command, result) {

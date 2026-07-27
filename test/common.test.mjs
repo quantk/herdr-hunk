@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,6 +10,7 @@ import {
   findHunkSessionIdByLaunch,
   formatNoteLocation,
   getSnapshotPath,
+  loadPromptTemplate,
   parseContext,
   readState,
   restoreCommentsFromReview,
@@ -259,10 +260,54 @@ test("buildAgentPrompt includes every human note with its location", () => {
     "/repo",
   );
 
-  assert.match(prompt, /Репозиторий: \/repo/);
+  assert.match(prompt, /Repository: \/repo/);
   assert.match(prompt, /src\/a\.js, new lines 7 — Validation/);
   assert.match(prompt, /Handle an empty value/);
   assert.match(prompt, /test\/a\.test\.js, hunk 1/);
+});
+
+test("buildAgentPrompt renders a custom template", () => {
+  const prompt = buildAgentPrompt(
+    [
+      {
+        filePath: "src/a.js",
+        newRange: [7, 7],
+        body: "Handle an empty value.",
+      },
+    ],
+    "/repo",
+    "{{note_count}} note for {{repository}}\n\n{{notes}}",
+  );
+
+  assert.equal(
+    prompt,
+    "1 note for /repo\n\n### 1. src/a.js, new lines 7\nHandle an empty value.",
+  );
+  assert.throws(
+    () => buildAgentPrompt([], "/repo", "{{repository}}"),
+    /must contain the \{\{notes\}\} placeholder/,
+  );
+  assert.throws(
+    () => buildAgentPrompt([], "/repo", "{{notes}}\n{{unknown}}"),
+    /unknown placeholder: \{\{unknown\}\}/,
+  );
+});
+
+test("loadPromptTemplate uses the default or a configured file", () => {
+  const configDir = mkdtempSync(join(tmpdir(), "herdr-hunk-config-"));
+  assert.match(loadPromptTemplate(configDir), /I finished reviewing/);
+
+  writeFileSync(
+    join(configDir, "prompt-template.md"),
+    "Custom\n\n{{notes}}\n",
+  );
+  assert.equal(loadPromptTemplate(configDir), "Custom\n\n{{notes}}");
+
+  writeFileSync(join(configDir, "prompt-template.md"), " \n");
+  assert.throws(
+    () => loadPromptTemplate(configDir),
+    /prompt-template\.md is empty/,
+  );
 });
 
 test("state and snapshots are written atomically and remain readable", () => {

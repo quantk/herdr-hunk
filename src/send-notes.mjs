@@ -6,6 +6,7 @@ import {
   describeCommandFailure,
   findHunkSessionIdByLaunch,
   getSnapshotPath,
+  loadPromptTemplate,
   parseCommandJson,
   parseContext,
   readState,
@@ -14,6 +15,7 @@ import {
   unwrapHunkReviewResponse,
   userNotesFromReview,
 } from "./common.mjs";
+import { insertPaneDraft } from "./herdr-api.mjs";
 
 function getActiveReviews(herdr, reviews) {
   const listed = spawnSync(herdr, ["pane", "list"], {
@@ -129,8 +131,10 @@ function notify(herdr, title, body) {
   );
 }
 
-function main() {
+async function main() {
   const stateDir = process.env.HERDR_PLUGIN_STATE_DIR;
+  const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR;
+  const socketPath = process.env.HERDR_SOCKET_PATH;
   const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
   const context = parseContext(process.env.HERDR_PLUGIN_CONTEXT_JSON);
   const state = readState(stateDir);
@@ -163,38 +167,48 @@ function main() {
     );
   }
 
-  const prompt = buildAgentPrompt(notes, review.repo);
+  const prompt = buildAgentPrompt(
+    notes,
+    review.repo,
+    loadPromptTemplate(configDir),
+  );
   if (Buffer.byteLength(prompt, "utf8") > 128 * 1024) {
     throw new Error(
-      "The review notes are too large to send as one prompt (limit: 128 KiB).",
+      "The review draft is too large to insert as one prompt (limit: 128 KiB).",
     );
   }
 
-  const sent = spawnSync(
+  const focused = spawnSync(
     herdr,
-    ["agent", "prompt", review.agentPaneId, prompt],
+    ["agent", "focus", review.agentPaneId],
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 2 * 1024 * 1024,
     },
   );
-  if (sent.status !== 0) {
-    throw new Error(describeCommandFailure("herdr agent prompt", sent));
+  if (focused.status !== 0) {
+    throw new Error(describeCommandFailure("herdr agent focus", focused));
+  }
+
+  try {
+    await insertPaneDraft(socketPath, review.agentPaneId, prompt);
+  } catch (error) {
+    throw new Error(`Cannot insert the agent draft: ${error.message}`);
   }
 
   notify(
     herdr,
-    "Hunk notes sent",
-    `${notes.length} note${notes.length === 1 ? "" : "s"} sent to ${review.agentKind ?? "agent"}.`,
+    "Hunk draft inserted",
+    `${notes.length} note${notes.length === 1 ? "" : "s"} inserted for ${review.agentKind ?? "agent"}; review and send it manually.`,
   );
   process.stdout.write(
-    `Sent ${notes.length} Hunk note${notes.length === 1 ? "" : "s"} to ${review.agentPaneId}.\n`,
+    `Inserted ${notes.length} Hunk note${notes.length === 1 ? "" : "s"} into ${review.agentPaneId} without submitting.\n`,
   );
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   process.stderr.write(
     `Hunk Review: ${error instanceof Error ? error.message : String(error)}\n`,
