@@ -46,6 +46,32 @@ while the review is hidden.
   in the same Git repository.
 - Supports multiple agents, repositories, workspaces, and concurrent reviews.
 
+## Agent-assisted setup
+
+**Recommended:** let your coding agent perform the complete setup for you. It
+will inspect the machine, install missing dependencies and the plugin, preserve
+the existing Herdr configuration, add non-conflicting shortcuts, and validate
+the result.
+
+Paste this prompt into Codex, Claude, or another agent with terminal access:
+
+```text
+Set up Herdr Hunk Review on this machine.
+
+Read and follow this guide first:
+https://raw.githubusercontent.com/quantk/herdr-hunk/main/agent-guide.md
+
+Inspect the existing environment and Herdr config before making changes.
+Preserve unrelated settings, avoid duplicate keybindings, validate the final
+config, reload it, and report exactly what was changed.
+```
+
+The guide also prevents the setup agent from opening test reviews or sending
+test prompts to agents that are already running.
+
+Prefer to see every step or use custom shortcuts? Continue with the manual
+installation below.
+
 ## Requirements
 
 Install these dependencies before installing the plugin:
@@ -112,27 +138,6 @@ herdr plugin link "$PWD" --enabled
 
 A linked plugin runs directly from the checkout. Source changes are picked up
 by the next action invocation, so reinstalling is not necessary.
-
-## Agent-assisted setup
-
-Your coding agent can inspect the machine, install the plugin, and update the
-existing Herdr configuration for you. Paste this prompt into Codex, Claude, or
-another agent with terminal access:
-
-```text
-Set up Herdr Hunk Review on this machine.
-
-Read and follow this guide first:
-https://raw.githubusercontent.com/quantk/herdr-hunk/main/agent-guide.md
-
-Inspect the existing environment and Herdr config before making changes.
-Preserve unrelated settings, avoid duplicate keybindings, validate the final
-config, reload it, and report exactly what was changed.
-```
-
-The guide instructs the agent to preserve the existing configuration, detect
-shortcut conflicts, verify every dependency, and avoid sending test prompts to
-running agents.
 
 ## Configure keyboard shortcuts
 
