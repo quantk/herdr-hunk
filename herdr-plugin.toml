@@ -1,6 +1,6 @@
 id = "quantick.hunk-review"
 name = "Hunk Review"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.7.0"
 description = "Review agent-authored changes in Hunk and draft human feedback for the agent."
 platforms = ["linux", "macos"]
