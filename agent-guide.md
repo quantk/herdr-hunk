@@ -68,7 +68,7 @@ Verify the version again after installation.
 For the published GitHub repository:
 
 ```sh
-herdr plugin install quantick/herdr-hunk
+herdr plugin install quantk/herdr-hunk
 ```
 
 If the user is working from a local checkout instead:

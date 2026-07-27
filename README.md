@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quantick/herdr-hunk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/quantick/herdr-hunk/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/quantick/herdr-hunk/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/quantick/herdr-hunk"></a>
+  <a href="https://github.com/quantk/herdr-hunk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/quantk/herdr-hunk/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/quantk/herdr-hunk/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/quantk/herdr-hunk"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Herdr 0.7.0 or newer" src="https://img.shields.io/badge/Herdr-%E2%89%A5%200.7.0-6c5ce7">
   <img alt="Hunk 0.17.6 or newer" src="https://img.shields.io/badge/Hunk-%E2%89%A5%200.17.6-00b894">
@@ -84,7 +84,7 @@ npm install --global hunkdiff
 After the repository is published, install it directly with Herdr:
 
 ```sh
-herdr plugin install quantick/herdr-hunk
+herdr plugin install quantk/herdr-hunk
 ```
 
 Confirm that the plugin is installed and enabled:
@@ -105,7 +105,7 @@ Use `plugin link` when developing the plugin or running an unpublished
 checkout:
 
 ```sh
-git clone https://github.com/quantick/herdr-hunk.git
+git clone https://github.com/quantk/herdr-hunk.git
 cd herdr-hunk
 herdr plugin link "$PWD" --enabled
 ```
@@ -123,7 +123,7 @@ another agent with terminal access:
 Set up Herdr Hunk Review on this machine.
 
 Read and follow this guide first:
-https://raw.githubusercontent.com/quantick/herdr-hunk/main/agent-guide.md
+https://raw.githubusercontent.com/quantk/herdr-hunk/main/agent-guide.md
 
 Inspect the existing environment and Herdr config before making changes.
 Preserve unrelated settings, avoid duplicate keybindings, validate the final
@@ -300,7 +300,7 @@ For a GitHub-managed installation:
 
 ```sh
 herdr plugin uninstall quantick.hunk-review
-herdr plugin install quantick/herdr-hunk
+herdr plugin install quantk/herdr-hunk
 ```
 
 ## Development
@@ -308,7 +308,7 @@ herdr plugin install quantick/herdr-hunk
 Clone and link the repository:
 
 ```sh
-git clone https://github.com/quantick/herdr-hunk.git
+git clone https://github.com/quantk/herdr-hunk.git
 cd herdr-hunk
 herdr plugin link "$PWD" --enabled
 ```
