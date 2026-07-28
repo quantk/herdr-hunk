@@ -26,13 +26,16 @@ async function shutdown(exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   if (timer) clearInterval(timer);
+  renderer?.destroy();
   try {
-    await highlighter?.destroy();
+    await Promise.race([
+      highlighter?.destroy(),
+      new Promise((resolve) => setTimeout(resolve, 500)),
+    ]);
   } catch {
     // Terminal restoration is more important than a parser worker error.
   }
-  renderer?.destroy();
-  process.exitCode = exitCode;
+  process.exit(exitCode);
 }
 
 async function main() {
