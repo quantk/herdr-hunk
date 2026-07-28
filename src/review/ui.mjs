@@ -168,6 +168,7 @@ export class ReviewUI {
     this.resizingSidebar = false;
     this.selectedDetachedNoteId = null;
     this.diffNavigation = [];
+    this.pendingG = false;
 
     this.root = new BoxRenderable(this.ctx, {
       id: "review-root",
@@ -258,6 +259,27 @@ export class ReviewUI {
           }
           this.render();
         }
+        return;
+      }
+
+      if (name === "g") {
+        key.preventDefault();
+        if (this.pendingG) {
+          this.pendingG = false;
+          this.moveToFileBoundary("top");
+        } else {
+          this.pendingG = true;
+          this.controller.status = "Press g again to jump to the top of this file.";
+        }
+        this.render();
+        return;
+      }
+      const jumpToBottom = name === "G";
+      this.pendingG = false;
+      if (jumpToBottom) {
+        key.preventDefault();
+        this.moveToFileBoundary("bottom");
+        this.render();
         return;
       }
 
@@ -381,6 +403,23 @@ export class ReviewUI {
     this.selectedDetachedNoteId = null;
     const visibleRows = Math.max(1, this.diff.viewport.height);
     this.controller.moveRow(direction * Math.max(1, Math.floor(visibleRows / 2)));
+  }
+
+  moveToFileBoundary(boundary) {
+    const rowCount = this.controller.file?.rows.length ?? 0;
+    if (!rowCount) {
+      this.controller.status = "The current file has no diff rows.";
+      return;
+    }
+    this.selectedDetachedNoteId = null;
+    this.controller.rowIndex = boundary === "top" ? 0 : rowCount - 1;
+    this.controller.rangeStart = null;
+    this.controller.rangeEnd = null;
+    this.controller.status =
+      boundary === "top"
+        ? "Moved to the top of the current file."
+        : "Moved to the bottom of the current file.";
+    this.controller.persistUI();
   }
 
   moveDiffSelection(delta) {
@@ -922,7 +961,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "help",
-          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · w row wrap · v range · s context target · c comment · e edit · x resolve/reopen · n notes · d d delete · r refresh · Esc cancel`,
+          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · gg/G file top/bottom · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · w row wrap · v range · s context target · c comment · e edit · x resolve/reopen · n notes · d d delete · r refresh · Esc cancel`,
           { height: 2 },
         ),
       );

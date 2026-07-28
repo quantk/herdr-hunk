@@ -149,6 +149,7 @@ The review pane uses this stable key contract:
 | --- | --- |
 | `1` / `2` / `3` | Working tree / branch / last observed turn |
 | arrows or `j` / `k` | Previous/next diff row or detached comment |
+| `gg` / `G` | First/last diff row in the current file |
 | `Ctrl+U` / `Ctrl+D` | Move up/down by half a visible page |
 | `[` / `]` | Previous/next separated change block |
 | `{` / `}` | Previous/next file |
