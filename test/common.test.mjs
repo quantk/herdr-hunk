@@ -6,14 +6,11 @@ import test from "node:test";
 import {
   activeReviews,
   buildAgentPrompt,
-  findHunkSessionId,
-  findHunkSessionIdByLaunch,
   formatNoteLocation,
   getSnapshotPath,
   loadPromptTemplate,
   parseContext,
   readState,
-  restoreCommentsFromReview,
   reviewsForAgent,
   selectReview,
   upsertReview,
@@ -31,7 +28,7 @@ test("parseContext accepts an object and rejects malformed JSON", () => {
   assert.throws(() => parseContext("{"), /invalid HERDR_PLUGIN_CONTEXT_JSON/);
 });
 
-test("selectReview prioritizes an exact pane match", () => {
+test("selectReview prioritizes exact matches and rejects ambiguous fallbacks", () => {
   const reviews = [
     {
       reviewKey: "older",
@@ -58,9 +55,55 @@ test("selectReview prioritizes an exact pane match", () => {
     }).reviewKey,
     "older",
   );
+  assert.throws(
+    () => selectReview(reviews, { workspace_id: "w1" }),
+    /Several active reviews/,
+  );
+  assert.equal(selectReview([reviews[1]], { workspace_id: "w1" }).reviewKey, "newer");
+  assert.throws(
+    () =>
+      selectReview(reviews, {
+        workspace_id: "w1",
+        focused_pane_cwd: "/repo",
+      }),
+    /Several active reviews/,
+  );
+});
+
+test("selectReview applies unique workspace/repository, repository, and global fallbacks in order", () => {
+  const reviews = [
+    {
+      reviewKey: "target",
+      reviewPaneId: "w2:p2",
+      agentPaneId: "w2:p1",
+      workspaceId: "w2",
+      repo: "/target",
+    },
+    {
+      reviewKey: "other",
+      reviewPaneId: "w3:p2",
+      agentPaneId: "w3:p1",
+      workspaceId: "w3",
+      repo: "/other",
+    },
+  ];
   assert.equal(
-    selectReview(reviews, { workspace_id: "w1" }).reviewKey,
-    "newer",
+    selectReview(reviews, {
+      workspace_id: "w2",
+      focused_pane_cwd: "/target",
+    }).reviewKey,
+    "target",
+  );
+  assert.equal(
+    selectReview(reviews, {
+      workspace_id: "unknown",
+      focused_pane_cwd: "/target",
+    }).reviewKey,
+    "target",
+  );
+  assert.equal(
+    selectReview([reviews[1]], { workspace_id: "unknown" }).reviewKey,
+    "other",
   );
 });
 
@@ -99,12 +142,25 @@ test("reviewsForAgent returns matching reviews newest first", () => {
 
 test("activeReviews excludes stale review pane records", () => {
   const reviews = [
-    { reviewKey: "active", reviewPaneId: "w1:p2" },
-    { reviewKey: "stale", reviewPaneId: "w1:p3" },
+    {
+      reviewKey: "active",
+      reviewPaneId: "w1:p2",
+      agentPaneId: "w1:p1",
+    },
+    {
+      reviewKey: "stale-review",
+      reviewPaneId: "w1:p3",
+      agentPaneId: "w1:p1",
+    },
+    {
+      reviewKey: "stale-agent",
+      reviewPaneId: "w1:p2",
+      agentPaneId: "w1:p4",
+    },
   ];
 
   assert.deepEqual(
-    activeReviews(reviews, new Set(["w1:p2"])).map(
+    activeReviews(reviews, new Set(["w1:p1", "w1:p2"])).map(
       (review) => review.reviewKey,
     ),
     ["active"],
@@ -136,41 +192,6 @@ test("userNotesFromReview excludes AI and agent annotations", () => {
   ]);
 });
 
-test("restoreCommentsFromReview preserves note text and location", () => {
-  assert.deepEqual(
-    restoreCommentsFromReview({
-      reviewNotes: [
-        {
-          source: "user",
-          filePath: "src/a.js",
-          body: "Check this line.",
-          newRange: [12, 12],
-        },
-        {
-          source: "user",
-          filePath: "src/b.js",
-          body: "Check this hunk.",
-          hunkIndex: 1,
-        },
-      ],
-    }),
-    [
-      {
-        filePath: "src/a.js",
-        summary: "Check this line.",
-        author: "user (restored)",
-        newLine: 12,
-      },
-      {
-        filePath: "src/b.js",
-        summary: "Check this hunk.",
-        author: "user (restored)",
-        hunk: 2,
-      },
-    ],
-  );
-});
-
 test("unwrapHunkReviewResponse accepts Hunk's CLI response envelope", () => {
   const model = { sessionId: "session-1", reviewNotes: [] };
   assert.equal(unwrapHunkReviewResponse({ review: model }), model);
@@ -178,53 +199,6 @@ test("unwrapHunkReviewResponse accepts Hunk's CLI response envelope", () => {
   assert.throws(
     () => unwrapHunkReviewResponse({ review: [] }),
     /invalid review model/,
-  );
-});
-
-test("findHunkSessionId selects the exact Hunk process in a shared repo", () => {
-  const response = {
-    sessions: [
-      { sessionId: "older", pid: 101, repoRoot: "/repo" },
-      { sessionId: "current", pid: 202, repoRoot: "/repo" },
-      { sessionId: "other", pid: 202, repoRoot: "/other" },
-    ],
-  };
-
-  assert.equal(findHunkSessionId(response, 202, "/repo"), "current");
-  assert.equal(findHunkSessionId(response, 303, "/repo"), undefined);
-});
-
-test("findHunkSessionIdByLaunch selects a legacy session by opening time", () => {
-  const response = {
-    sessions: [
-      {
-        sessionId: "older",
-        repoRoot: "/repo",
-        launchedAt: "2026-07-27T18:21:05.000Z",
-      },
-      {
-        sessionId: "current",
-        repoRoot: "/repo",
-        launchedAt: "2026-07-27T18:22:06.100Z",
-      },
-    ],
-  };
-
-  assert.equal(
-    findHunkSessionIdByLaunch(
-      response,
-      "/repo",
-      "2026-07-27T18:22:05.700Z",
-    ),
-    "current",
-  );
-  assert.equal(
-    findHunkSessionIdByLaunch(
-      response,
-      "/repo",
-      "2026-07-27T19:00:00.000Z",
-    ),
-    undefined,
   );
 });
 

@@ -7,10 +7,18 @@
   "engines": {
     "node": ">=18"
   },
+  "packageManager": "bun@1.3.14",
   "scripts": {
-    "check": "node --check src/common.mjs && node --check src/herdr-api.mjs && node --check src/open-review.mjs && node --check src/review-pane.mjs && node --check src/send-notes.mjs",
-    "test": "node --test",
+    "check": "node scripts/check-source.mjs",
+    "test": "node --test test/*.test.mjs && bun test test-bun",
     "version:check": "node scripts/check-version.mjs",
     "release:prepare": "node scripts/set-version.mjs"
+  },
+  "dependencies": {
+    "@opentui/core": "0.4.5"
+  },
+  "devDependencies": {
+    "bun": "1.3.14",
+    "tree-sitter-wasms": "0.1.13"
   }
 }

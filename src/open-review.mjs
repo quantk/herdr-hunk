@@ -13,7 +13,7 @@ import {
 } from "./common.mjs";
 
 function fail(message) {
-  process.stderr.write(`Hunk Review: ${message}\n`);
+  process.stderr.write(`Review: ${message}\n`);
   process.exitCode = 1;
 }
 
@@ -52,11 +52,11 @@ function toggleExistingReview(herdr, review) {
       "--workspace",
       agentPane.workspace_id,
       "--label",
-      "Hunk review",
+      "Review",
       "--no-focus",
     ]);
     process.stdout.write(
-      `Hid Hunk for ${review.repo} without closing its session.\n`,
+      `Hid the review for ${review.repo} without closing its session.\n`,
     );
   } else {
     runPaneMove(herdr, [
@@ -70,7 +70,7 @@ function toggleExistingReview(herdr, review) {
       "--focus",
     ]);
     process.stdout.write(
-      `Restored Hunk for ${review.repo} beside ${review.agentKind ?? "agent"} (${review.agentPaneId}).\n`,
+      `Restored the review for ${review.repo} beside ${review.agentKind ?? "agent"} (${review.agentPaneId}).\n`,
     );
   }
   return true;
@@ -92,7 +92,7 @@ function main() {
   const agentPaneId = context.focused_pane_id;
   if (!agentPaneId || !context.focused_pane_agent) {
     throw new Error(
-      "Focus a detected coding agent or its Hunk pane, then run this action again.",
+      "Focus a detected coding agent or its review pane, then run this action again.",
     );
   }
 
@@ -103,23 +103,27 @@ function main() {
     agentPaneId,
     repo,
   );
-  for (const review of matchingReviews) {
-    if (toggleExistingReview(herdr, review)) {
-      return;
-    }
-  }
-
-  const hunkCheck = spawnSync("hunk", ["--version"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (hunkCheck.status !== 0) {
+  const activeMatches = matchingReviews.filter(
+    (review) =>
+      getPane(herdr, review.reviewPaneId) &&
+      getPane(herdr, review.agentPaneId),
+  );
+  if (activeMatches.length > 1) {
     throw new Error(
-      "Hunk is not available on PATH. Install it with `npm i -g hunkdiff`.",
+      "Several active reviews are associated with this agent and repository. Close the obsolete pane before opening another.",
     );
   }
+  if (
+    activeMatches.length === 1 &&
+    toggleExistingReview(herdr, activeMatches[0])
+  ) {
+    return;
+  }
 
-  const reviewKey = matchingReviews[0]?.reviewKey ?? randomUUID();
+  const reviewKey =
+    matchingReviews.length === 1
+      ? matchingReviews[0].reviewKey
+      : randomUUID();
   const args = [
     "plugin",
     "pane",
@@ -170,7 +174,7 @@ function main() {
   );
 
   process.stdout.write(
-    `Opened Hunk for ${repo} beside ${context.focused_pane_agent} (${agentPaneId}).\n`,
+    `Opened a review for ${repo} beside ${context.focused_pane_agent} (${agentPaneId}).\n`,
   );
 }
 

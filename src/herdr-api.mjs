@@ -28,7 +28,7 @@ export function insertPaneDraft(socketPath, paneId, text) {
     socket.on("connect", () => {
       socket.write(
         `${JSON.stringify({
-          id: `hunk-review:${process.pid}`,
+          id: `native-review:${process.pid}`,
           method: "pane.send_input",
           params: {
             pane_id: paneId,

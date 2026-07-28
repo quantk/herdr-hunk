@@ -1,17 +1,20 @@
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 export const PLUGIN_ID = "quantick.hunk-review";
 export const STATE_FILE = "reviews.json";
 export const RESTORED_USER_AUTHOR = "user (restored)";
 export const PROMPT_TEMPLATE_FILE = "prompt-template.md";
-export const DEFAULT_PROMPT_TEMPLATE = `I finished reviewing your changes in Hunk.
+export const DEFAULT_PROMPT_TEMPLATE = `I finished reviewing your changes.
 Repository: {{repository}}
 
 Address all review notes below. Verify each note against the current code first. If a note is outdated or conflicts with the task, explain why instead of changing the code blindly.
@@ -47,7 +50,7 @@ export function getSnapshotPath(stateDir, reviewKey) {
     throw new Error("HERDR_PLUGIN_STATE_DIR is not set.");
   }
   if (!reviewKey || !/^[a-zA-Z0-9-]+$/.test(reviewKey)) {
-    throw new Error("Invalid Hunk review key.");
+    throw new Error("Invalid review key.");
   }
   return join(stateDir, "snapshots", `${reviewKey}.json`);
 }
@@ -69,12 +72,16 @@ export function readState(stateDir) {
 
 export function writeJsonAtomic(path, value) {
   mkdirSync(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  renameSync(temporaryPath, path);
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    renameSync(temporaryPath, path);
+  } finally {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+  }
 }
 
 export function writeState(stateDir, state) {
@@ -88,7 +95,11 @@ export function upsertReview(state, review) {
   const reviews = state.reviews.filter(
     (item) =>
       item.reviewKey !== review.reviewKey &&
-      item.reviewPaneId !== review.reviewPaneId,
+      item.reviewPaneId !== review.reviewPaneId &&
+      !(
+        item.agentPaneId === review.agentPaneId &&
+        item.repo === review.repo
+      ),
   );
   reviews.push(review);
   reviews.sort((left, right) =>
@@ -105,28 +116,35 @@ export function selectReview(reviews, context) {
   const focusedPaneId = context.focused_pane_id;
   const workspaceId = context.workspace_id;
   const cwd = context.focused_pane_cwd ?? context.workspace_cwd;
-  const newestFirst = [...reviews].sort((left, right) =>
-    String(right.openedAt).localeCompare(String(left.openedAt)),
+  const unique = (candidates, description) => {
+    if (candidates.length > 1) {
+      throw new Error(
+        `Several active reviews match ${description}. Focus the intended review pane or source agent.`,
+      );
+    }
+    return candidates[0];
+  };
+  const focusedReview = reviews.filter(
+    (item) => focusedPaneId && item.reviewPaneId === focusedPaneId,
   );
-
-  return (
-    newestFirst.find(
-      (item) =>
-        focusedPaneId &&
-        (item.reviewPaneId === focusedPaneId ||
-          item.agentPaneId === focusedPaneId),
-    ) ??
-    newestFirst.find(
-      (item) =>
-        workspaceId &&
-        item.workspaceId === workspaceId &&
-        (!cwd || item.repo === cwd),
-    ) ??
-    newestFirst.find(
-      (item) => workspaceId && item.workspaceId === workspaceId,
-    ) ??
-    newestFirst.find((item) => cwd && item.repo === cwd)
+  if (focusedReview.length) return unique(focusedReview, "the focused review pane");
+  const focusedAgent = reviews.filter(
+    (item) => focusedPaneId && item.agentPaneId === focusedPaneId,
   );
+  if (focusedAgent.length) return unique(focusedAgent, "the focused source agent");
+  const workspaceRepo = reviews.filter(
+    (item) =>
+      workspaceId &&
+      cwd &&
+      item.workspaceId === workspaceId &&
+      item.repo === cwd,
+  );
+  if (workspaceRepo.length) {
+    return unique(workspaceRepo, "this workspace and repository");
+  }
+  const repository = reviews.filter((item) => cwd && item.repo === cwd);
+  if (repository.length) return unique(repository, "this repository");
+  return unique(reviews, "the current context");
 }
 
 export function reviewsForAgent(reviews, agentPaneId, repo) {
@@ -149,7 +167,11 @@ export function activeReviews(reviews, paneIds) {
   if (!Array.isArray(reviews) || !(paneIds instanceof Set)) {
     return [];
   }
-  return reviews.filter((review) => paneIds.has(review?.reviewPaneId));
+  return reviews.filter(
+    (review) =>
+      paneIds.has(review?.reviewPaneId) &&
+      paneIds.has(review?.agentPaneId),
+  );
 }
 
 export function resolveGitRoot(cwd, run = execFileSync) {
@@ -183,45 +205,6 @@ export function unwrapHunkReviewResponse(response) {
   return review;
 }
 
-export function findHunkSessionId(response, pid, repo) {
-  const sessions = response?.sessions ?? response?.result?.sessions;
-  if (!Array.isArray(sessions) || !Number.isInteger(pid)) {
-    return undefined;
-  }
-  return sessions.find(
-    (session) =>
-      session?.pid === pid &&
-      (!repo || session?.repoRoot === repo),
-  )?.sessionId;
-}
-
-export function findHunkSessionIdByLaunch(
-  response,
-  repo,
-  openedAt,
-  toleranceMs = 10_000,
-) {
-  const sessions = response?.sessions ?? response?.result?.sessions;
-  const openedTime = Date.parse(openedAt);
-  if (!Array.isArray(sessions) || !Number.isFinite(openedTime)) {
-    return undefined;
-  }
-
-  return sessions
-    .filter(
-      (session) =>
-        session?.repoRoot === repo &&
-        typeof session?.sessionId === "string" &&
-        Number.isFinite(Date.parse(session?.launchedAt)),
-    )
-    .map((session) => ({
-      sessionId: session.sessionId,
-      distance: Math.abs(Date.parse(session.launchedAt) - openedTime),
-    }))
-    .filter((session) => session.distance <= toleranceMs)
-    .sort((left, right) => left.distance - right.distance)[0]?.sessionId;
-}
-
 export function userNotesFromReview(review) {
   if (!review || !Array.isArray(review.reviewNotes)) {
     return [];
@@ -233,26 +216,6 @@ export function userNotesFromReview(review) {
           note?.author === RESTORED_USER_AUTHOR)) &&
       typeof note.body === "string",
   );
-}
-
-export function restoreCommentsFromReview(review) {
-  return userNotesFromReview(review).flatMap((note) => {
-    const comment = {
-      filePath: note.filePath,
-      summary: note.body,
-      author: RESTORED_USER_AUTHOR,
-    };
-    if (Array.isArray(note.newRange) && Number.isInteger(note.newRange[0])) {
-      return [{ ...comment, newLine: note.newRange[0] }];
-    }
-    if (Array.isArray(note.oldRange) && Number.isInteger(note.oldRange[0])) {
-      return [{ ...comment, oldLine: note.oldRange[0] }];
-    }
-    if (Number.isInteger(note.hunkIndex)) {
-      return [{ ...comment, hunk: note.hunkIndex + 1 }];
-    }
-    return [];
-  });
 }
 
 function formatRange(range) {
@@ -267,6 +230,14 @@ function formatRange(range) {
 }
 
 export function formatNoteLocation(note) {
+  if (note?.anchor) {
+    const { anchor } = note;
+    const range =
+      anchor.endLine > anchor.startLine
+        ? `${anchor.startLine}-${anchor.endLine}`
+        : String(anchor.startLine);
+    return `${anchor.path}, ${anchor.side} lines ${range}${note.status === "stale" ? " (STALE LOCATION; original context)" : ""}`;
+  }
   const parts = [note.filePath || "(unknown file)"];
   const newRange = formatRange(note.newRange);
   const oldRange = formatRange(note.oldRange);
@@ -314,9 +285,28 @@ export function buildAgentPrompt(
 ) {
   const renderedNotes = notes.map((note, index) => {
     const title = note.title ? ` — ${note.title}` : "";
+    const context = [];
+    if (note.anchor?.contextBefore?.length) {
+      context.push("", "Context before:", "```", ...note.anchor.contextBefore, "```");
+    }
+    if (note.anchor?.selectedText?.length) {
+      context.push(
+        "",
+        note.status === "stale"
+          ? "Original selected context (location is stale):"
+          : "Selected context:",
+        "```",
+        ...note.anchor.selectedText,
+        "```",
+      );
+    }
+    if (note.anchor?.contextAfter?.length) {
+      context.push("", "Context after:", "```", ...note.anchor.contextAfter, "```");
+    }
     return [
       `### ${index + 1}. ${formatNoteLocation(note)}${title}`,
       note.body.trim(),
+      ...context,
     ].join("\n");
   }).join("\n\n");
 

@@ -1,26 +1,29 @@
 id = "quantick.hunk-review"
-name = "Hunk Review"
+name = "Native Review"
 version = "0.1.1"
 min_herdr_version = "0.7.0"
-description = "Review agent-authored changes in Hunk and draft human feedback for the agent."
+description = "Review agent-authored working-tree changes and draft human feedback for the agent."
 platforms = ["linux", "macos"]
+
+[[build]]
+command = ["npm", "ci", "--omit=dev"]
 
 [[actions]]
 id = "open-review"
-title = "Review changes with Hunk"
-description = "Open a live Hunk review beside the focused agent."
+title = "Review changes"
+description = "Open a live native review beside the focused agent."
 contexts = ["pane"]
 command = ["node", "src/open-review.mjs"]
 
 [[actions]]
 id = "send-notes"
-title = "Draft Hunk notes for agent"
+title = "Draft review notes for agent"
 description = "Insert human review notes into the matching agent input without submitting."
 contexts = ["pane"]
 command = ["node", "src/send-notes.mjs"]
 
 [[panes]]
 id = "review"
-title = "Hunk review"
+title = "Review"
 placement = "split"
-command = ["node", "src/review-pane.mjs"]
+command = ["bun", "src/review-pane.mjs"]
