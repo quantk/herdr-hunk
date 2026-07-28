@@ -29,7 +29,7 @@ function createFakeHerdr(directory) {
   writeFileSync(
     path,
     `#!/usr/bin/env node
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+	import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 const root = process.env.HERDR_FAKE_DATA;
 const args = process.argv.slice(2);
 appendFileSync(root + "/commands.jsonl", JSON.stringify(args) + "\\n");
@@ -40,7 +40,18 @@ const paneState = existsSync(paneStatePath)
 const reply = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 if (args[0] === "pane" && args[1] === "get") {
   const id = args[2];
-  if (id === "w1:p1") reply({ result: { pane: { pane_id: id, tab_id: "tab-main", workspace_id: "w1" } } });
+  if (process.env.HERDR_FAKE_PANE_NOT_FOUND === id) {
+    process.stderr.write(JSON.stringify({
+      id: "cli:pane:get",
+      error: { code: "pane_not_found", message: "pane " + id + " not found" },
+    }) + "\\n");
+    process.exitCode = 1;
+  }
+  else if (process.env.HERDR_FAKE_PANE_GET_ERROR === id) {
+    reply({ error: { code: "temporary_failure", message: "temporary pane lookup failure" } });
+    process.exitCode = 1;
+  }
+  else if (id === "w1:p1") reply({ result: { pane: { pane_id: id, tab_id: "tab-main", workspace_id: "w1" } } });
   else if (id === "w1:p2") reply({ result: { pane: { pane_id: id, tab_id: paneState.reviewTab, workspace_id: "w1" } } });
   else process.exitCode = 1;
 } else if (args[0] === "tab" && args[1] === "focus") {
@@ -57,10 +68,24 @@ if (args[0] === "pane" && args[1] === "get") {
   writeFileSync(paneStatePath, JSON.stringify(paneState));
   reply({ result: { move_result: { pane: { pane_id: args[2], tab_id: "tab-review" } } } });
 } else if (args[0] === "pane" && args[1] === "list") {
-  reply({ result: { panes: [{ pane_id: "w1:p1" }, { pane_id: "w1:p2" }] } });
+  reply({ result: { panes: [
+    {
+      pane_id: "w1:p1",
+      workspace_id: "w1",
+      agent: "codex",
+      cwd: process.env.HERDR_FAKE_AGENT_CWD,
+      foreground_cwd: process.env.HERDR_FAKE_AGENT_CWD,
+    },
+    { pane_id: "w1:p2", workspace_id: "w1" },
+  ] } });
 } else if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") {
   writeFileSync(paneStatePath, JSON.stringify({ reviewTab: "tab-review", focusedTab: "tab-review" }));
+  if (process.env.HERDR_FAKE_BREAK_STATE_AFTER_OPEN === "1") {
+    mkdirSync(process.env.HERDR_PLUGIN_STATE_DIR + "/reviews.json");
+  }
   reply({ result: { plugin_pane: { pane: { pane_id: "w1:p2", tab_id: "tab-review", workspace_id: "w1" } } } });
+} else if (args[0] === "plugin" && args[1] === "pane" && args[2] === "close") {
+  reply({ result: { closed: args[3] } });
 } else if (args[0] === "agent" && args[1] === "focus") {
   reply({ result: { pane_id: args[2] } });
 } else if (args[0] === "notification" && args[1] === "show") {
@@ -84,6 +109,7 @@ function actionEnv({ repo, stateDir, fakeHerdr, fakeData, socketPath, context })
     HERDR_PLUGIN_STATE_DIR: stateDir,
     HERDR_PLUGIN_CONFIG_DIR: join(fakeData, "config"),
     HERDR_SOCKET_PATH: socketPath,
+    HERDR_FAKE_AGENT_CWD: repo,
     HERDR_PLUGIN_CONTEXT_JSON: JSON.stringify({
       workspace_id: "w1",
       workspace_cwd: repo,
@@ -235,6 +261,145 @@ test("F6 migrates an existing split review into a dedicated tab without restarti
   );
 });
 
+test("F6 fails closed on a transient pane lookup error", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr-actions-f6-lookup-"));
+  const repo = join(root, "repo");
+  const stateDir = join(root, "state");
+  mkdirSync(repo);
+  spawnSync("git", ["init", "-q", repo]);
+  const fakeHerdr = createFakeHerdr(root);
+  writeState(
+    stateDir,
+    upsertReview(
+      { version: 1, reviews: [] },
+      {
+        reviewKey: "lookup-failure",
+        repo,
+        agentPaneId: "w1:p1",
+        agentKind: "codex",
+        reviewPaneId: "w1:p2",
+        workspaceId: "w1",
+        openedAt: new Date().toISOString(),
+      },
+    ),
+  );
+  const env = actionEnv({
+    repo,
+    stateDir,
+    fakeHerdr,
+    fakeData: root,
+    context: {
+      focused_pane_id: "w1:p1",
+      focused_pane_agent: "codex",
+    },
+  });
+  env.HERDR_FAKE_PANE_GET_ERROR = "w1:p2";
+  const result = spawnSync(process.execPath, ["src/open-review.mjs"], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /temporary pane lookup failure/);
+  const commands = readFileSync(join(root, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(
+    commands.some((args) => args.slice(0, 3).join(" ") === "plugin pane open"),
+    false,
+  );
+});
+
+test("F6 replaces a review pane that exited through Ctrl+C", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr-actions-f6-stale-pane-"));
+  const repo = join(root, "repo");
+  const stateDir = join(root, "state");
+  mkdirSync(repo);
+  spawnSync("git", ["init", "-q", repo]);
+  const fakeHerdr = createFakeHerdr(root);
+  writeState(
+    stateDir,
+    upsertReview(
+      { version: 1, reviews: [] },
+      {
+        reviewKey: "preserved-review-key",
+        repo,
+        agentPaneId: "w1:p1",
+        agentKind: "codex",
+        reviewPaneId: "w1:p2",
+        workspaceId: "w1",
+        openedAt: new Date().toISOString(),
+      },
+    ),
+  );
+  const env = actionEnv({
+    repo,
+    stateDir,
+    fakeHerdr,
+    fakeData: root,
+    context: {
+      focused_pane_id: "w1:p1",
+      focused_pane_agent: "codex",
+    },
+  });
+  env.HERDR_FAKE_PANE_NOT_FOUND = "w1:p2";
+  const result = spawnSync(process.execPath, ["src/open-review.mjs"], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Opened a review tab/);
+  assert.equal(readState(stateDir).reviews[0].reviewKey, "preserved-review-key");
+  const commands = readFileSync(join(root, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(
+    commands.filter(
+      (args) => args.slice(0, 3).join(" ") === "plugin pane open",
+    ).length,
+    1,
+  );
+});
+
+test("F6 closes a newly opened pane when association persistence fails", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr-actions-f6-rollback-"));
+  const repo = join(root, "repo");
+  const stateDir = join(root, "state");
+  mkdirSync(repo);
+  spawnSync("git", ["init", "-q", repo]);
+  const fakeHerdr = createFakeHerdr(root);
+  const env = actionEnv({
+    repo,
+    stateDir,
+    fakeHerdr,
+    fakeData: root,
+    context: {
+      focused_pane_id: "w1:p1",
+      focused_pane_agent: "codex",
+    },
+  });
+  env.HERDR_FAKE_BREAK_STATE_AFTER_OPEN = "1";
+  const result = spawnSync(process.execPath, ["src/open-review.mjs"], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  const commands = readFileSync(join(root, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(
+    commands.some(
+      (args) => args.slice(0, 3).join(" ") === "plugin pane close",
+    ),
+    true,
+  );
+});
+
 test("F7 loads the exact native store and inserts one unsubmitted human-only draft", async () => {
   const root = mkdtempSync(join(tmpdir(), "herdr-actions-f7-"));
   const repo = join(root, "repo");
@@ -353,5 +518,55 @@ test("F7 loads the exact native store and inserts one unsubmitted human-only dra
       (candidate) => candidate.id === branchNote.id,
     ).resolvedAt,
     null,
+  );
+});
+
+test("F7 rejects a source agent that moved to another repository", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr-actions-f7-repo-"));
+  const repo = join(root, "repo");
+  const otherRepo = join(root, "other");
+  const stateDir = join(root, "state");
+  mkdirSync(repo);
+  mkdirSync(otherRepo);
+  spawnSync("git", ["init", "-q", repo]);
+  spawnSync("git", ["init", "-q", otherRepo]);
+  const fakeHerdr = createFakeHerdr(root);
+  writeState(
+    stateDir,
+    upsertReview(
+      { version: 1, reviews: [] },
+      {
+        reviewKey: "review-moved",
+        repo,
+        agentPaneId: "w1:p1",
+        agentKind: "codex",
+        reviewPaneId: "w1:p2",
+        workspaceId: "w1",
+        openedAt: new Date().toISOString(),
+      },
+    ),
+  );
+  const env = actionEnv({
+    repo,
+    stateDir,
+    fakeHerdr,
+    fakeData: root,
+    context: { focused_pane_id: "w1:p2" },
+  });
+  env.HERDR_FAKE_AGENT_CWD = otherRepo;
+  const result = spawnSync(process.execPath, ["src/send-notes.mjs"], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /different repository/);
+  const commands = readFileSync(join(root, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(
+    commands.some((args) => args.slice(0, 2).join(" ") === "agent focus"),
+    false,
   );
 });

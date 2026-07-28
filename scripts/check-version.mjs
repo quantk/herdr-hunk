@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -17,6 +17,18 @@ if (packageJson.version !== manifestVersion) {
   throw new Error(
     `Version mismatch: package.json=${packageJson.version}, herdr-plugin.toml=${manifestVersion}.`,
   );
+}
+const lockPath = new URL("../package-lock.json", import.meta.url);
+if (existsSync(lockPath)) {
+  const packageLock = JSON.parse(readFileSync(lockPath, "utf8"));
+  if (
+    packageLock.version !== packageJson.version ||
+    packageLock.packages?.[""]?.version !== packageJson.version
+  ) {
+    throw new Error(
+      `Version mismatch: package.json=${packageJson.version}, package-lock.json=${packageLock.version}, package-lock root=${packageLock.packages?.[""]?.version}.`,
+    );
+  }
 }
 if (expectedVersion && packageJson.version !== expectedVersion) {
   throw new Error(

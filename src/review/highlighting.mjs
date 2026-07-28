@@ -7,6 +7,8 @@ import {
 } from "@opentui/core";
 import { REQUIRED_FILETYPES } from "./languages.mjs";
 
+const MAX_CACHE_ENTRIES = 4_096;
+
 const assetRoot = fileURLToPath(
   new URL("../../assets/tree-sitter/", import.meta.url),
 );
@@ -130,6 +132,9 @@ export async function createHighlighter() {
       if (!filetype) return content;
       const key = `${filetype}\0${cacheKey}`;
       if (!cache.has(key)) {
+        if (cache.size >= MAX_CACHE_ENTRIES) {
+          cache.delete(cache.keys().next().value);
+        }
         cache.set(
           key,
           treeSitterToStyledText(content, filetype, style, client),

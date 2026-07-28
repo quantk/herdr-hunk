@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
   lstat,
   mkdtemp,
-  readFile,
+  open,
   readlink,
   rm,
 } from "node:fs/promises";
@@ -31,6 +32,7 @@ async function git(repo, args, options = {}) {
       encoding: options.encoding ?? "utf8",
       env: { ...GIT_ENV, ...options.env },
       maxBuffer: options.maxBuffer ?? 32 * 1024 * 1024,
+      timeout: options.timeout ?? 30_000,
     },
   );
   return result.stdout;
@@ -92,6 +94,53 @@ function isUtf8Text(content) {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function readRegularFileLimited(path, maxBytes) {
+  let handle;
+  try {
+    handle = await open(
+      path,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_NOFOLLOW ?? 0) |
+        (fsConstants.O_NONBLOCK ?? 0),
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ELOOP") return undefined;
+    throw error;
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) return undefined;
+    if (info.size > maxBytes) {
+      return { tooLarge: true, mode: info.mode };
+    }
+    const chunks = [];
+    let position = 0;
+    while (position <= maxBytes) {
+      const size = Math.min(64 * 1024, maxBytes + 1 - position);
+      const chunk = Buffer.allocUnsafe(size);
+      const { bytesRead } = await handle.read(
+        chunk,
+        0,
+        size,
+        position,
+      );
+      if (bytesRead === 0) break;
+      chunks.push(chunk.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    if (position > maxBytes) {
+      return { tooLarge: true, mode: info.mode };
+    }
+    return {
+      tooLarge: false,
+      mode: info.mode,
+      content: Buffer.concat(chunks, position),
+    };
+  } finally {
+    await handle.close();
   }
 }
 
@@ -456,13 +505,22 @@ export class GitSource {
       (candidate) => candidate.status === "untracked",
     )) {
       const absolutePath = resolve(this.repo, entry.path);
-      const info = await lstat(absolutePath);
+      let info;
+      try {
+        info = await lstat(absolutePath);
+      } catch (error) {
+        if (error?.code === "ENOENT") continue;
+        throw error;
+      }
       if (info.isSymbolicLink()) {
-        const linkPatch = createUntrackedPatch(
-          entry.path,
-          await readlink(absolutePath),
-          "120000",
-        );
+        let target;
+        try {
+          target = await readlink(absolutePath);
+        } catch (error) {
+          if (error?.code === "ENOENT" || error?.code === "EINVAL") continue;
+          throw error;
+        }
+        const linkPatch = createUntrackedPatch(entry.path, target, "120000");
         if (
           Buffer.byteLength(patch) + Buffer.byteLength(linkPatch) <=
           this.limits.totalPatchBytes
@@ -477,14 +535,19 @@ export class GitSource {
         continue;
       }
       if (!info.isFile()) continue;
-      if (info.size > this.limits.fileBytes) {
+      const opened = await readRegularFileLimited(
+        absolutePath,
+        this.limits.fileBytes,
+      );
+      if (!opened) continue;
+      if (opened.tooLarge) {
         oversized.push({
           ...entry,
           reason: `file exceeds ${this.limits.fileBytes} bytes`,
         });
         continue;
       }
-      const content = await readFile(absolutePath);
+      const content = opened.content;
       if (!isUtf8Text(content)) {
         const binaryPatch = [
           "",
@@ -508,7 +571,7 @@ export class GitSource {
         const textPatch = createUntrackedPatch(
           entry.path,
           content.toString("utf8"),
-          info.mode & 0o111 ? "100755" : "100644",
+          opened.mode & 0o111 ? "100755" : "100644",
         );
         if (
           Buffer.byteLength(patch) + Buffer.byteLength(textPatch) <=

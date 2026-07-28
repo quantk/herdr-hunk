@@ -1,5 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { join } from "node:path";
 import { REQUIRED_FILETYPES } from "../src/review/languages.mjs";
 
@@ -14,6 +19,38 @@ function filesUnder(directory, suffix) {
 for (const path of filesUnder("src", ".mjs")) {
   execFileSync(process.execPath, ["--check", path], { stdio: "inherit" });
 }
+
+const manifest = readFileSync("herdr-plugin.toml", "utf8");
+for (const required of [
+  'id = "quantick.hunk-review"',
+  'id = "open-review"',
+  'id = "send-notes"',
+  'id = "review"',
+]) {
+  if (!manifest.includes(required)) {
+    throw new Error(`Missing required manifest entry: ${required}`);
+  }
+}
+const commands = [...manifest.matchAll(/^command\s*=\s*(\[[^\n]+\])$/gm)]
+  .map((match) => {
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      throw new Error(`Invalid manifest command: ${match[1]}`);
+    }
+  });
+if (commands.length !== 4) {
+  throw new Error(`Expected 4 manifest commands, found ${commands.length}.`);
+}
+for (const command of commands) {
+  if (
+    (command[0] === "node" || command[0] === "bun") &&
+    (!command[1] || !existsSync(command[1]))
+  ) {
+    throw new Error(`Manifest command target does not exist: ${command[1]}`);
+  }
+}
+
 for (const filetype of REQUIRED_FILETYPES) {
   const directory = join("assets", "tree-sitter", filetype);
   const wasm = readdirSync(directory).find((name) => name.endsWith(".wasm"));

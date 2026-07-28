@@ -236,8 +236,11 @@ Press `F7` from:
 Every fallback must be unique. Ambiguous reviews produce an actionable error
 instead of selecting the newest one. The structured draft includes file,
 old/new side, line/range, selected context, detached warnings, and comment
-text. The plugin focuses the recorded source agent and inserts the draft with
-`keys: []`; it does not clear existing input, submit it, or change comment
+text. Before insertion, the plugin verifies that the recorded pane is still the
+same detected agent in the same workspace and Git repository. If the pane was
+reused or the agent moved to another repository, `F7` refuses to route stale
+feedback. Otherwise it focuses the recorded source agent and inserts the draft
+with `keys: []`; it does not clear existing input, submit it, or change comment
 resolution state.
 
 ## Prompt template
@@ -283,6 +286,9 @@ non-text entries stay visible as metadata instead of freezing the pane.
 - If the pane reports a Tree-sitter load failure, reinstall the plugin; all
   grammar assets must exist in the installed artifact.
 - If several reviews match, focus the intended review or source agent.
+- If `F7` reports that the source agent moved, focus that agent and press `F6`
+  to open the review associated with its current repository.
+- If another review action is already running, wait for it to finish and retry.
 - A saved note is required before `F7`; editor text alone is intentionally
   excluded.
 - `3 last observed turn` waits until this live review observes the associated

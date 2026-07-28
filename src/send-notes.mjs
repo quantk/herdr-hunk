@@ -11,19 +11,13 @@ import {
   selectReview,
 } from "./common.mjs";
 import { insertPaneDraft } from "./herdr-api.mjs";
+import { listHerdrPanes, runHerdr } from "./herdr-cli.mjs";
 import { noteMatchesScope, scopeLabel } from "./review/scopes.mjs";
 import { readStore } from "./review/store.mjs";
 
-function getActiveReviews(herdr, reviews) {
-  const listed = spawnSync(herdr, ["pane", "list"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  if (listed.status !== 0 || !listed.stdout.trim()) return [];
-  const panes = parseCommandJson(listed.stdout, "herdr pane list")?.result?.panes;
+function getActiveReviews(panes, reviews) {
   const paneIds = new Set(
-    Array.isArray(panes) ? panes.map((pane) => pane?.pane_id) : [],
+    panes.map((pane) => pane?.pane_id).filter(Boolean),
   );
   return activeReviews(reviews, paneIds);
 }
@@ -40,7 +34,7 @@ function normalizeContextRepo(context) {
 }
 
 function notify(herdr, title, body) {
-  spawnSync(
+  runHerdr(
     herdr,
     [
       "notification",
@@ -53,7 +47,6 @@ function notify(herdr, title, body) {
       "--sound",
       "done",
     ],
-    { encoding: "utf8", stdio: "ignore" },
   );
 }
 
@@ -71,9 +64,40 @@ function activeScopeBase(store, review) {
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10_000,
     },
   );
   return resolved.status === 0 ? resolved.stdout.trim() : null;
+}
+
+function validateSourceAgent(panes, review) {
+  const agentPane = panes.find(
+    (pane) => pane?.pane_id === review.agentPaneId,
+  );
+  if (!agentPane?.agent) {
+    throw new Error("The recorded source pane is no longer a detected coding agent.");
+  }
+  if (
+    review.agentKind &&
+    agentPane.agent !== review.agentKind
+  ) {
+    throw new Error(
+      `The recorded source pane now belongs to ${agentPane.agent}, not ${review.agentKind}.`,
+    );
+  }
+  if (
+    review.workspaceId &&
+    agentPane.workspace_id !== review.workspaceId
+  ) {
+    throw new Error("The recorded source agent moved to another workspace.");
+  }
+  const cwd = agentPane.foreground_cwd ?? agentPane.cwd;
+  const currentRepo = resolveGitRoot(cwd);
+  if (currentRepo !== review.repo) {
+    throw new Error(
+      `The recorded source agent is now in a different repository: ${currentRepo}`,
+    );
+  }
 }
 
 async function main() {
@@ -82,9 +106,11 @@ async function main() {
   const socketPath = process.env.HERDR_SOCKET_PATH;
   const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
   const context = parseContext(process.env.HERDR_PLUGIN_CONTEXT_JSON);
-  const reviews = getActiveReviews(herdr, readState(stateDir).reviews);
+  const panes = listHerdrPanes(herdr);
+  const reviews = getActiveReviews(panes, readState(stateDir).reviews);
   const review = selectReview(reviews, normalizeContextRepo(context));
   if (!review) throw new Error("No running review was found.");
+  validateSourceAgent(panes, review);
 
   const store = readStore(stateDir, review.reviewKey, review.repo);
   const scope = store.ui.scope;
@@ -109,11 +135,11 @@ async function main() {
     throw new Error("The review draft is too large to insert as one prompt (limit: 128 KiB).");
   }
 
-  const focused = spawnSync(herdr, ["agent", "focus", review.agentPaneId], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 2 * 1024 * 1024,
-  });
+  const focused = runHerdr(
+    herdr,
+    ["agent", "focus", review.agentPaneId],
+    { maxBuffer: 2 * 1024 * 1024 },
+  );
   if (focused.status !== 0) {
     throw new Error(describeCommandFailure("herdr agent focus", focused));
   }

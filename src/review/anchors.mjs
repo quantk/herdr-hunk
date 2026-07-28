@@ -26,6 +26,15 @@ export function createAnchor(file, rows, generation, preferredSide = "new") {
   if (selected.some((row) => sideLine(row, side) == null)) {
     throw new Error("A comment range cannot cross old and new diff sides.");
   }
+  const lines = selected.map((row) => sideLine(row, side));
+  if (
+    lines.some(
+      (line, index) =>
+        index > 0 && line !== lines[index - 1] + 1,
+    )
+  ) {
+    throw new Error("A comment range cannot cross separated diff hunks.");
+  }
   const indices = selected.map((row) => file.rows.indexOf(row));
   const first = Math.min(...indices);
   const last = Math.max(...indices);

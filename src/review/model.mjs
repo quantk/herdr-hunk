@@ -55,11 +55,23 @@ export function commentSide(row, preferredSide = "new") {
 }
 
 export function terminalSafeText(value) {
-  return String(value).replace(
-    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
-    (character) =>
-      character === "\u001b"
-        ? "␛"
-        : `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`,
-  );
+  return String(value)
+    .replace(
+      /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,
+      (character) =>
+        character === "\u001b"
+          ? "␛"
+          : `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`,
+    )
+    .replace(
+      /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+      (character) =>
+        `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+}
+
+export function terminalSafeLine(value) {
+  return terminalSafeText(value)
+    .replaceAll("\t", "\\t")
+    .replaceAll("\n", "\\n");
 }

@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   unlinkSync,
@@ -12,6 +14,7 @@ import { dirname, join } from "node:path";
 
 export const PLUGIN_ID = "quantick.hunk-review";
 export const STATE_FILE = "reviews.json";
+export const STATE_LOCK_FILE = "reviews.lock";
 export const RESTORED_USER_AUTHOR = "user (restored)";
 export const PROMPT_TEMPLATE_FILE = "prompt-template.md";
 export const DEFAULT_PROMPT_TEMPLATE = `I finished reviewing your changes.
@@ -91,6 +94,85 @@ export function writeState(stateDir, state) {
   });
 }
 
+function removeStaleStateLock(path) {
+  let ownerPid;
+  try {
+    ownerPid = Number.parseInt(readFileSync(path, "utf8").trim(), 10);
+  } catch {
+    return false;
+  }
+  if (!Number.isInteger(ownerPid) || ownerPid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(ownerPid, 0);
+    return false;
+  } catch (error) {
+    if (error?.code !== "ESRCH") return false;
+  }
+  try {
+    unlinkSync(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return true;
+    return false;
+  }
+}
+
+export function withStateLock(stateDir, callback) {
+  if (!stateDir) {
+    throw new Error("HERDR_PLUGIN_STATE_DIR is not set.");
+  }
+  mkdirSync(stateDir, { recursive: true });
+  const path = join(stateDir, STATE_LOCK_FILE);
+  let descriptor;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      descriptor = openSync(path, "wx", 0o600);
+      break;
+    } catch (error) {
+      if (
+        error?.code === "EEXIST" &&
+        attempt === 0 &&
+        removeStaleStateLock(path)
+      ) {
+        continue;
+      }
+      if (error?.code === "EEXIST") {
+        throw new Error(
+          "Another review action is already running. Try again in a moment.",
+        );
+      }
+      throw new Error(`Cannot lock plugin state: ${error.message}`);
+    }
+  }
+  try {
+    writeFileSync(descriptor, `${process.pid}\n`, "utf8");
+  } catch (error) {
+    closeSync(descriptor);
+    descriptor = undefined;
+    try {
+      unlinkSync(path);
+    } catch {
+      // Preserve the original lock-write error.
+    }
+    throw new Error(`Cannot initialize plugin state lock: ${error.message}`);
+  }
+
+  try {
+    return callback();
+  } finally {
+    if (descriptor != null) closeSync(descriptor);
+    try {
+      unlinkSync(path);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw new Error(`Cannot unlock plugin state: ${error.message}`);
+      }
+    }
+  }
+}
+
 export function upsertReview(state, review) {
   const reviews = state.reviews.filter(
     (item) =>
@@ -105,7 +187,18 @@ export function upsertReview(state, review) {
   reviews.sort((left, right) =>
     String(left.openedAt).localeCompare(String(right.openedAt)),
   );
-  return { version: 1, reviews: reviews.slice(-50) };
+  return { version: 1, reviews };
+}
+
+export function compactReviews(reviews, paneIds) {
+  if (!Array.isArray(reviews) || !(paneIds instanceof Set)) {
+    return [];
+  }
+  return reviews.filter(
+    (review) =>
+      paneIds.has(review?.agentPaneId) ||
+      paneIds.has(review?.reviewPaneId),
+  );
 }
 
 export function selectReview(reviews, context) {
@@ -183,6 +276,7 @@ export function resolveGitRoot(cwd, run = execFileSync) {
     return run("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10_000,
     }).trim();
   } catch {
     throw new Error(`The focused agent is not running in a Git repository: ${cwd}`);

@@ -6,7 +6,10 @@ import {
   unquoteGitPath,
 } from "../src/review/parse-diff.mjs";
 import { detectFiletype } from "../src/review/languages.mjs";
-import { terminalSafeText } from "../src/review/model.mjs";
+import {
+  terminalSafeLine,
+  terminalSafeText,
+} from "../src/review/model.mjs";
 
 test("parseUnifiedDiff maps old/new lines and stable row identities", () => {
   const patch = [
@@ -115,6 +118,10 @@ test("diff parsing handles quoted renames, binary and mode-only entries", () => 
   );
   assert.equal(unquoteGitPath('"space\\tname"'), "space\tname");
   assert.equal(unquoteGitPath('"caf\\303\\251.js"'), "café.js");
+  assert.equal(
+    unquoteGitPath('"a\\ab\\bc\\vd\\fe"'),
+    "a\u0007b\bc\u000bd\fe",
+  );
 });
 
 test("untracked patch and language detection cover supported forms", () => {
@@ -122,6 +129,11 @@ test("untracked patch and language detection cover supported forms", () => {
   assert.equal(model.files[0].status, "added");
   assert.equal(model.files[0].path, "new file.py");
   assert.equal(model.files[0].rows[0].newLine, 1);
+  const unusual = "line\nbell\u0007.txt";
+  assert.equal(
+    parseUnifiedDiff(createUntrackedPatch(unusual, "value")).files[0].path,
+    unusual,
+  );
   assert.equal(detectFiletype("src/view.tsx"), "tsx");
   assert.equal(detectFiletype("src/main/kotlin/App.kt"), "kotlin");
   assert.equal(detectFiletype("build.gradle.kts"), "kotlin");
@@ -131,4 +143,8 @@ test("untracked patch and language detection cover supported forms", () => {
   assert.equal(detectFiletype("script", "#!/usr/bin/env python3"), "python");
   assert.equal(detectFiletype("unknown.data"), undefined);
   assert.equal(terminalSafeText("safe\u001b[31m"), "safe␛[31m");
+  assert.equal(
+    terminalSafeLine("line\n\t\u202e"),
+    "line\\n\\t\\u202e",
+  );
 });

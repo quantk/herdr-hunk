@@ -113,6 +113,29 @@ test("GitSource supports an unborn repository without writing an index", async (
   assert.equal(git(repo, "status", "--porcelain=v1"), beforeStatus);
 });
 
+test("GitSource preserves legal control characters in tracked and untracked paths", async () => {
+  const repo = createRepo();
+  const tracked = [
+    "bell\u0007.txt",
+    "back\bspace.txt",
+    "vertical\u000btab.txt",
+    "form\fbreak.txt",
+  ];
+  for (const path of tracked) writeFileSync(join(repo, path), "before\n");
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "base");
+  for (const path of tracked) writeFileSync(join(repo, path), "after\n");
+  const untracked = "line\nbreak.txt";
+  writeFileSync(join(repo, untracked), "new\n");
+
+  const paths = new Set(
+    (await new GitSource(repo).refresh(1)).files.map((file) => file.path),
+  );
+  for (const path of [...tracked, untracked]) {
+    assert.equal(paths.has(path), true, JSON.stringify(path));
+  }
+});
+
 test("GitSource branch scope includes committed, working-tree, and untracked changes from merge-base", async () => {
   const repo = createRepo();
   writeFileSync(join(repo, "committed.txt"), "base\n");

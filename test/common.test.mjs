@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   activeReviews,
   buildAgentPrompt,
+  compactReviews,
   formatNoteLocation,
   getSnapshotPath,
   loadPromptTemplate,
@@ -14,6 +15,7 @@ import {
   reviewsForAgent,
   selectReview,
   upsertReview,
+  withStateLock,
   unwrapHunkReviewResponse,
   userNotesFromReview,
   writeJsonAtomic,
@@ -304,4 +306,28 @@ test("state and snapshots are written atomically and remain readable", () => {
   assert.deepEqual(JSON.parse(readFileSync(snapshotPath, "utf8")), {
     review: { reviewNotes: [] },
   });
+});
+
+test("state lock rejects overlapping actions and releases after completion", () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "herdr-lock-"));
+  assert.throws(
+    () =>
+      withStateLock(stateDir, () =>
+        withStateLock(stateDir, () => undefined)
+      ),
+    /Another review action is already running/,
+  );
+  assert.equal(withStateLock(stateDir, () => 42), 42);
+});
+
+test("review compaction removes records whose panes are both gone", () => {
+  const reviews = [
+    { agentPaneId: "agent-live", reviewPaneId: "review-gone" },
+    { agentPaneId: "agent-gone", reviewPaneId: "review-live" },
+    { agentPaneId: "agent-gone", reviewPaneId: "review-gone" },
+  ];
+  assert.deepEqual(
+    compactReviews(reviews, new Set(["agent-live", "review-live"])),
+    reviews.slice(0, 2),
+  );
 });

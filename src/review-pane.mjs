@@ -117,15 +117,27 @@ async function main() {
   await ui.render();
   renderer.start();
 
-  timer = setInterval(async () => {
+  const poll = async () => {
     const previousStatus = controller.status;
     const baselineChanged = await tracker.sample();
     const changed = await controller.refresh();
     if (changed || baselineChanged || controller.status !== previousStatus) {
       await ui.render();
     }
-  }, 1_000);
-  timer.unref();
+  };
+  const schedulePoll = () => {
+    if (shuttingDown) return;
+    timer = setTimeout(() => {
+      poll()
+        .then(schedulePoll)
+        .catch(async (error) => {
+          process.stderr.write(`Review: ${error.message}\n`);
+          await shutdown(1);
+        });
+    }, 1_000);
+    timer.unref();
+  };
+  schedulePoll();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

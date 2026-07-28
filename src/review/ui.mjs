@@ -6,7 +6,11 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import { detectFiletype } from "./languages.mjs";
-import { commentSide, terminalSafeText } from "./model.mjs";
+import {
+  commentSide,
+  terminalSafeLine,
+  terminalSafeText,
+} from "./model.mjs";
 import { scopeLabel } from "./scopes.mjs";
 import { shortcutName } from "./shortcuts.mjs";
 
@@ -425,6 +429,11 @@ export class ReviewUI {
   }
 
   moveDiffSelection(delta) {
+    if (this.controller.rangeStart != null) {
+      this.selectedDetachedNoteId = null;
+      this.controller.moveRow(delta);
+      return;
+    }
     if (!this.diffNavigation.length) {
       this.controller.moveRow(delta);
       return;
@@ -450,8 +459,6 @@ export class ReviewUI {
       this.selectedDetachedNoteId = null;
       this.controller.rowIndex = target.rowIndex;
     }
-    this.controller.rangeStart = null;
-    this.controller.rangeEnd = null;
     this.controller.persistUI();
   }
 
@@ -551,9 +558,9 @@ export class ReviewUI {
     const sidebarVisible =
       this.controller.sidebarVisible ?? !narrow;
     const sidebarWidth = this.clampedSidebarWidth();
-    this.diff.title = ` ${
-      this.controller.source.describeScope?.() ?? this.controller.scope
-    }${this.controller.rowWrap ? " · wrap" : ""} `;
+    this.diff.title = ` ${terminalSafeLine(
+      this.controller.source.describeScope?.() ?? this.controller.scope,
+    )}${this.controller.rowWrap ? " · wrap" : ""} `;
     this.files.visible = sidebarVisible;
     this.files.width = sidebarVisible ? (narrow ? "100%" : sidebarWidth) : 0;
     this.splitter.visible = sidebarVisible && !narrow;
@@ -679,7 +686,7 @@ export class ReviewUI {
       const item = text(
         this.ctx,
         `file:${file.id}`,
-        `${selected ? "›" : " "} ${status} ${terminalSafeText(file.path)}${count ? ` (${count})` : ""}`,
+        `${selected ? "›" : " "} ${status} ${terminalSafeLine(file.path)}${count ? ` (${count})` : ""}`,
         {
           backgroundColor: selected ? COLORS.selected : undefined,
           fg: selected ? COLORS.accent : COLORS.context,
@@ -720,7 +727,7 @@ export class ReviewUI {
         text(
           this.ctx,
           `nontext:${file.id}`,
-          `${file.kind.toUpperCase()}: ${terminalSafeText(file.path)}\n${file.header.map(terminalSafeText).join("\n")}`,
+          `${file.kind.toUpperCase()}: ${terminalSafeLine(file.path)}\n${file.header.map(terminalSafeLine).join("\n")}`,
           { height: Math.max(2, file.header.length + 1), fg: COLORS.warning },
         ),
       );
@@ -736,8 +743,8 @@ export class ReviewUI {
         this.ctx,
         `file-header:${file.id}`,
         file.previousPath
-          ? `${terminalSafeText(file.previousPath)} → ${terminalSafeText(file.path)}`
-          : terminalSafeText(file.path),
+          ? `${terminalSafeLine(file.previousPath)} → ${terminalSafeLine(file.path)}`
+          : terminalSafeLine(file.path),
         { fg: COLORS.warning },
       ),
     );
@@ -747,7 +754,7 @@ export class ReviewUI {
         text(
           this.ctx,
           `hunk:${hunk.id}`,
-          `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@ ${hunk.header}`,
+          `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@ ${terminalSafeLine(hunk.header)}`,
           { fg: COLORS.accent },
         ),
       );
@@ -876,7 +883,7 @@ export class ReviewUI {
     const body = terminalSafeText(note.body);
     const bodyHeight = Math.max(1, body.split("\n").length);
     const location =
-      `${terminalSafeText(note.anchor.path)}:${note.anchor.startLine}-${note.anchor.endLine}`;
+      `${terminalSafeLine(note.anchor.path)}:${note.anchor.startLine}-${note.anchor.endLine}`;
     const title = detached
       ? ` open · detached · ${location} `
       : resolved
@@ -949,7 +956,7 @@ export class ReviewUI {
         this.controller.status.startsWith("A saved note") ||
         this.controller.status.startsWith("Invalid review store") ||
         this.controller.status.startsWith("Refresh failed");
-      this.bottom.title = ` comment — Ctrl+S save · Esc cancel${editorError ? ` · ${this.controller.status}` : ""} `;
+      this.bottom.title = ` comment — Ctrl+S save · Esc cancel${editorError ? ` · ${terminalSafeLine(this.controller.status)}` : ""} `;
       const editor = new TextareaRenderable(this.ctx, {
         id: "comment-editor",
         flexGrow: 1,
@@ -993,7 +1000,7 @@ export class ReviewUI {
               : note.status === "stale"
                 ? "⚠ open · detached"
                 : "● open";
-          return `${index === this.notesIndex ? "›" : " "} ${index + 1}. ${state} · ${note.anchor.path}:${note.anchor.startLine}-${note.anchor.endLine} ${note.body.split("\n")[0]}`;
+          return `${index === this.notesIndex ? "›" : " "} ${index + 1}. ${state} · ${terminalSafeLine(note.anchor.path)}:${note.anchor.startLine}-${note.anchor.endLine} ${terminalSafeLine(note.body.split("\n")[0])}`;
         },
       );
       const start = Math.max(
@@ -1020,7 +1027,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "status-text",
-          `${this.controller.status}  ${summary} · ${commentTarget(this.controller)} · b sidebar · w wrap · ?/F1 help · r refresh · c comment · n notes`,
+          `${terminalSafeLine(this.controller.status)}  ${summary} · ${commentTarget(this.controller)} · b sidebar · w wrap · ?/F1 help · r refresh · c comment · n notes`,
           { fg: this.controller.status.startsWith("Refresh failed") ? COLORS.warning : COLORS.context },
         ),
       );

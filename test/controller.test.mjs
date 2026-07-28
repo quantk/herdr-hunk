@@ -93,6 +93,35 @@ test("controller finalizes a contiguous same-side range and keeps drafts off dis
   assert.equal(readStore(stateDir, "review-range", "/repo").notes.length, 1);
 });
 
+test("controller rejects a range that crosses separated diff hunks", () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "herdr-controller-hunks-"));
+  const controller = new ReviewController({
+    source: {},
+    stateDir,
+    store: emptyStore("review-hunks", "/repo"),
+  });
+  controller.model = parseUnifiedDiff(
+    [
+      "diff --git a/a.js b/a.js",
+      "--- a/a.js",
+      "+++ b/a.js",
+      "@@ -0,0 +1 @@",
+      "+one",
+      "@@ -8,0 +10 @@",
+      "+ten",
+    ].join("\n"),
+    { generation: 1 },
+  );
+  controller.rowIndex = 0;
+  controller.toggleRange();
+  controller.rowIndex = 1;
+  controller.toggleRange();
+  assert.throws(
+    () => controller.beginComment(),
+    /cannot cross separated diff hunks/,
+  );
+});
+
 test("controller resolves, reopens, and reopens a resolved note when edited", () => {
   const stateDir = mkdtempSync(join(tmpdir(), "herdr-controller-resolve-"));
   const controller = new ReviewController({

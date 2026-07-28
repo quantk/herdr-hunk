@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import {
   PLUGIN_ID,
+  compactReviews,
   describeCommandFailure,
   parseCommandJson,
   parseContext,
@@ -9,47 +9,36 @@ import {
   reviewsForAgent,
   resolveGitRoot,
   upsertReview,
+  withStateLock,
   writeState,
 } from "./common.mjs";
+import {
+  getHerdrPane,
+  listHerdrPanes,
+  runHerdr,
+} from "./herdr-cli.mjs";
 
 function fail(message) {
   process.stderr.write(`Review: ${message}\n`);
   process.exitCode = 1;
 }
 
-function getPane(herdr, paneId) {
-  const result = spawnSync(herdr, ["pane", "get", paneId], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.status !== 0 || !result.stdout.trim()) {
-    return undefined;
-  }
-  return parseCommandJson(result.stdout, "herdr pane get")?.result?.pane;
-}
-
 function focusTab(herdr, tabId) {
-  const focused = spawnSync(herdr, ["tab", "focus", tabId], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const focused = runHerdr(herdr, ["tab", "focus", tabId]);
   if (focused.status !== 0) {
     throw new Error(describeCommandFailure("herdr tab focus", focused));
   }
 }
 
 function renameTab(herdr, tabId) {
-  const renamed = spawnSync(herdr, ["tab", "rename", tabId, "Review"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const renamed = runHerdr(herdr, ["tab", "rename", tabId, "Review"]);
   if (renamed.status !== 0) {
     throw new Error(describeCommandFailure("herdr tab rename", renamed));
   }
 }
 
 function moveReviewToDedicatedTab(herdr, reviewPaneId, workspaceId) {
-  const moved = spawnSync(
+  const moved = runHerdr(
     herdr,
     [
       "pane",
@@ -62,10 +51,6 @@ function moveReviewToDedicatedTab(herdr, reviewPaneId, workspaceId) {
       "Review",
       "--focus",
     ],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
   );
   if (moved.status !== 0) {
     throw new Error(describeCommandFailure("herdr pane move", moved));
@@ -73,8 +58,8 @@ function moveReviewToDedicatedTab(herdr, reviewPaneId, workspaceId) {
 }
 
 function toggleExistingReview(herdr, review, focusedPaneId) {
-  const reviewPane = getPane(herdr, review.reviewPaneId);
-  const agentPane = getPane(herdr, review.agentPaneId);
+  const reviewPane = getHerdrPane(herdr, review.reviewPaneId);
+  const agentPane = getHerdrPane(herdr, review.agentPaneId);
   if (!reviewPane || !agentPane) {
     return false;
   }
@@ -97,7 +82,7 @@ function toggleExistingReview(herdr, review, focusedPaneId) {
 
   renameTab(herdr, reviewPane.tab_id);
   const focusedPane = focusedPaneId
-    ? getPane(herdr, focusedPaneId)
+    ? getHerdrPane(herdr, focusedPaneId)
     : undefined;
   if (focusedPane?.tab_id === reviewPane.tab_id) {
     focusTab(herdr, agentPane.tab_id);
@@ -118,7 +103,16 @@ function main() {
   const stateDir = process.env.HERDR_PLUGIN_STATE_DIR;
   const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
   const pluginId = process.env.HERDR_PLUGIN_ID ?? PLUGIN_ID;
-  const state = readState(stateDir);
+  const panes = listHerdrPanes(herdr);
+  const paneIds = new Set(panes.map((pane) => pane?.pane_id).filter(Boolean));
+  const storedState = readState(stateDir);
+  const state = {
+    version: 1,
+    reviews: compactReviews(storedState.reviews, paneIds),
+  };
+  if (state.reviews.length !== storedState.reviews.length) {
+    writeState(stateDir, state);
+  }
   const focusedReview = state.reviews.find(
     (review) => review.reviewPaneId === context.focused_pane_id,
   );
@@ -145,8 +139,8 @@ function main() {
   );
   const activeMatches = matchingReviews.filter(
     (review) =>
-      getPane(herdr, review.reviewPaneId) &&
-      getPane(herdr, review.agentPaneId),
+      getHerdrPane(herdr, review.reviewPaneId) &&
+      getHerdrPane(herdr, review.agentPaneId),
   );
   if (activeMatches.length > 1) {
     throw new Error(
@@ -160,7 +154,7 @@ function main() {
     return;
   }
 
-  const agentPane = getPane(herdr, agentPaneId);
+  const agentPane = getHerdrPane(herdr, agentPaneId);
   if (!agentPane) {
     throw new Error("The focused agent pane is no longer active.");
   }
@@ -192,10 +186,7 @@ function main() {
     `HERDR_HUNK_AGENT_PANE=${agentPaneId}`,
     "--focus",
   ];
-  const opened = spawnSync(herdr, args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const opened = runHerdr(herdr, args);
   if (opened.status !== 0) {
     throw new Error(describeCommandFailure("herdr plugin pane open", opened));
   }
@@ -206,25 +197,43 @@ function main() {
     throw new Error("Herdr opened the review but did not return its pane ID.");
   }
 
-  writeState(
-    stateDir,
-    upsertReview(state, {
-      reviewKey,
-      repo,
-      agentPaneId,
-      agentKind: context.focused_pane_agent,
-      reviewPaneId: pane.pane_id,
-      workspaceId: pane.workspace_id ?? context.workspace_id,
-      openedAt: new Date().toISOString(),
-    }),
-  );
-
-  const reviewTabId =
-    pane.tab_id ?? getPane(herdr, pane.pane_id)?.tab_id;
-  if (!reviewTabId) {
-    throw new Error("Herdr opened the review but did not return its tab ID.");
+  try {
+    writeState(
+      stateDir,
+      upsertReview(state, {
+        reviewKey,
+        repo,
+        agentPaneId,
+        agentKind: context.focused_pane_agent,
+        reviewPaneId: pane.pane_id,
+        workspaceId: pane.workspace_id ?? context.workspace_id,
+        openedAt: new Date().toISOString(),
+      }),
+    );
+  } catch (error) {
+    const closed = runHerdr(
+      herdr,
+      ["plugin", "pane", "close", pane.pane_id],
+    );
+    const cleanup =
+      closed.status === 0
+        ? ""
+        : ` Cleanup also failed: ${describeCommandFailure("herdr plugin pane close", closed)}`;
+    throw new Error(`${error.message}.${cleanup}`);
   }
-  renameTab(herdr, reviewTabId);
+
+  try {
+    const reviewTabId =
+      pane.tab_id ?? getHerdrPane(herdr, pane.pane_id)?.tab_id;
+    if (!reviewTabId) {
+      throw new Error("Herdr did not return the review tab ID.");
+    }
+    renameTab(herdr, reviewTabId);
+  } catch (error) {
+    process.stderr.write(
+      `Review: opened successfully, but the tab could not be renamed: ${error.message}\n`,
+    );
+  }
 
   process.stdout.write(
     `Opened a review tab for ${repo} and switched to it.\n`,
@@ -232,7 +241,7 @@ function main() {
 }
 
 try {
-  main();
+  withStateLock(process.env.HERDR_PLUGIN_STATE_DIR, main);
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

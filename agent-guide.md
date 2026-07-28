@@ -140,7 +140,9 @@ Fix only problems introduced by this setup. An attached client may need
 5. Press `F6` from the review tab to return to the source agent tab; press it
    from the source agent to switch back to the same live review tab.
 6. Press `F7` to insert open validated saved comments into the exact source
-   agent.
+   agent. If that pane was reused or moved to another workspace or Git
+   repository, the plugin refuses stale routing; focus the current agent and
+   open its matching review with `F6`.
 7. Review or edit the draft, then press Enter manually.
 8. After checking the agent's fixes, select each corrected comment inline or
    in the `n` list and press `x` to resolve it. Press `x` again to reopen it.

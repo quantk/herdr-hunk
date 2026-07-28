@@ -1,6 +1,6 @@
 id = "quantick.hunk-review"
 name = "Native Review"
-version = "0.2.4"
+version = "0.2.5"
 min_herdr_version = "0.7.0"
 description = "Review agent-authored working-tree changes and draft human feedback for the agent."
 platforms = ["linux", "macos"]

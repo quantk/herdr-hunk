@@ -46,6 +46,7 @@ export class AgentTurnTracker {
       {
         encoding: "utf8",
         maxBuffer: 4 * 1024 * 1024,
+        timeout: 10_000,
       },
     );
     return parseAgentStatus(stdout, this.agentPaneId);

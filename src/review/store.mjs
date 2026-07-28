@@ -37,6 +37,10 @@ export function validateNote(note, repository) {
   assert(typeof note.id === "string" && note.id.length > 0, "note ID is required");
   assert(note.provenance === "human", "note provenance must be human");
   assert(typeof note.body === "string" && note.body.trim(), "note body is empty");
+  assert(
+    !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(note.body),
+    "note body contains terminal control characters",
+  );
   assert(typeof note.title === "string", "note title must be a string");
   assert(
     note.resolvedAt == null ||

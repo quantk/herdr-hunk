@@ -42,15 +42,14 @@ if (compareVersions(nextVersion, currentVersion) <= 0) {
 }
 
 packageJson.version = nextVersion;
-writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
+let packageLock;
 if (existsSync(lockPath)) {
-  const packageLock = JSON.parse(readFileSync(lockPath, "utf8"));
+  packageLock = JSON.parse(readFileSync(lockPath, "utf8"));
   packageLock.version = nextVersion;
   if (packageLock.packages?.[""]) {
     packageLock.packages[""].version = nextVersion;
   }
-  writeFileSync(lockPath, `${JSON.stringify(packageLock, null, 2)}\n`);
 }
 
 const manifest = readFileSync(manifestPath, "utf8");
@@ -60,6 +59,11 @@ const updatedManifest = manifest.replace(
 );
 if (updatedManifest === manifest) {
   throw new Error("Cannot update version in herdr-plugin.toml.");
+}
+
+writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+if (packageLock) {
+  writeFileSync(lockPath, `${JSON.stringify(packageLock, null, 2)}\n`);
 }
 writeFileSync(manifestPath, updatedManifest);
 

@@ -23,7 +23,15 @@ export function unquoteGitPath(value) {
       continue;
     }
     const escaped = inner[index + 1];
-    const decoded = { t: "\t", n: "\n", r: "\r" }[escaped] ?? escaped;
+    const decoded = {
+      a: "\u0007",
+      b: "\b",
+      t: "\t",
+      n: "\n",
+      v: "\v",
+      f: "\f",
+      r: "\r",
+    }[escaped] ?? escaped;
     bytes.push(...Buffer.from(decoded));
     index += 1;
   }
@@ -272,10 +280,33 @@ export function createUntrackedPatch(path, content, mode = "100644") {
   const lines = content === "" ? [] : content.split("\n");
   const hasFinalNewline = content.endsWith("\n");
   if (hasFinalNewline && lines.length) lines.pop();
-  const oldPath =
-    path.includes(" ") || path.includes("\t") ? JSON.stringify(`a/${path}`) : `a/${path}`;
-  const newPath =
-    path.includes(" ") || path.includes("\t") ? JSON.stringify(`b/${path}`) : `b/${path}`;
+  const quotePath = (value) => {
+    const bytes = Buffer.from(value, "utf8");
+    let quoted = '"';
+    for (const byte of bytes) {
+      const escaped = {
+        7: "\\a",
+        8: "\\b",
+        9: "\\t",
+        10: "\\n",
+        11: "\\v",
+        12: "\\f",
+        13: "\\r",
+        34: '\\"',
+        92: "\\\\",
+      }[byte];
+      if (escaped) {
+        quoted += escaped;
+      } else if (byte >= 0x20 && byte <= 0x7e) {
+        quoted += String.fromCharCode(byte);
+      } else {
+        quoted += `\\${byte.toString(8).padStart(3, "0")}`;
+      }
+    }
+    return `${quoted}"`;
+  };
+  const oldPath = quotePath(`a/${path}`);
+  const newPath = quotePath(`b/${path}`);
   const body = lines.map((line) => `+${line}`).join("\n");
   const marker =
     hasFinalNewline || content === ""

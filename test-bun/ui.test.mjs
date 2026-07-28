@@ -135,6 +135,27 @@ test("addition and deletion rows use distinct full-row backgrounds", async () =>
   expect(deletionRow.width).toBe(app.ui.diff.viewport.width);
 });
 
+test("repository-controlled terminal characters are rendered visibly, never raw", async () => {
+  const unsafeModel = parseUnifiedDiff(
+    [
+      'diff --git "a/src/bad\\033[2J.js" "b/src/bad\\033[2J.js"',
+      '--- "a/src/bad\\033[2J.js"',
+      '+++ "b/src/bad\\033[2J.js"',
+      "@@ -0,0 +1 @@ unsafe\u001b[2Jheader",
+      "+value",
+    ].join("\n"),
+    { generation: 1 },
+  );
+  const app = await setup(100, 24, undefined, unsafeModel);
+  app.controller.beginComment();
+  app.controller.saveEditor("Check this path.");
+  app.mockInput.pressKey("n");
+  await app.flush();
+  const frame = app.captureCharFrame();
+  expect(frame.includes("\u001b")).toBe(false);
+  expect(frame).toContain("␛");
+});
+
 test("keyboard navigation, multiline paste, save, cancel, and resize preserve state", async () => {
   const app = await setup();
   expect(app.captureCharFrame()).toContain("uncommitted");
@@ -191,6 +212,31 @@ test("keyboard navigation, multiline paste, save, cancel, and resize preserve st
   app.mockInput.pressKey("d");
   await app.waitFor(() => app.controller.store.notes.length === 0);
   expect(app.controller.store.notes).toHaveLength(0);
+});
+
+test("v extends a keyboard range across j/k navigation", async () => {
+  const app = await setup();
+  app.mockInput.pressKey("j");
+  app.mockInput.pressKey("j");
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(2);
+
+  app.mockInput.pressKey("v");
+  app.mockInput.pressKey("j");
+  await app.flush();
+  expect(app.controller.rangeStart).toBe(2);
+  expect(app.controller.rowIndex).toBe(3);
+  expect(app.controller.selectedRows()).toHaveLength(2);
+
+  app.mockInput.pressKey("v");
+  app.mockInput.pressKey("c");
+  await app.waitFor(() => app.controller.editor != null);
+  expect(app.controller.editor.anchor.startLine).toBe(2);
+  expect(app.controller.editor.anchor.endLine).toBe(3);
+  expect(app.controller.editor.anchor.selectedText).toEqual([
+    "const value = 2;",
+    "console.log(value);",
+  ]);
 });
 
 test("sidebar toggles without losing selection and file rows are not text-selectable", async () => {
