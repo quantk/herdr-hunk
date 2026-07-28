@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { DIFF_LIMITS } from "./model.mjs";
 import { createUntrackedPatch, parseUnifiedDiff } from "./parse-diff.mjs";
-import { normalizeScope, scopeLabel } from "./scopes.mjs";
+import { normalizeScope } from "./scopes.mjs";
 
 const execFileAsync = promisify(execFile);
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -269,11 +269,7 @@ export class GitSource {
   }
 
   async deleteTreeRef(ref) {
-    try {
-      await git(this.repo, ["update-ref", "-d", ref]);
-    } catch {
-      // Deleting an absent candidate is already the desired state.
-    }
+    await git(this.repo, ["update-ref", "-d", ref]);
   }
 
   async comparison() {
@@ -357,6 +353,11 @@ export class GitSource {
     const { buffer, entries } = await this.porcelain();
     const fingerprint = createHash("sha256");
     fingerprint.update(buffer);
+    await this.updateWorkingStateFingerprint(fingerprint, entries);
+    return fingerprint.digest("hex");
+  }
+
+  async updateWorkingStateFingerprint(fingerprint, entries) {
     for (const entry of entries) {
       fingerprint.update(`\0${entry.path}\0`);
       try {
@@ -391,7 +392,6 @@ export class GitSource {
     } catch {
       fingerprint.update("\0head:unborn");
     }
-    return fingerprint.digest("hex");
   }
 
   async status() {
@@ -403,40 +403,7 @@ export class GitSource {
     fingerprint.update(`${comparison.target ?? "worktree"}\0`);
     fingerprint.update(buffer);
     if (this.scope !== "last-turn") {
-      for (const entry of entries) {
-        fingerprint.update(`\0${entry.path}\0`);
-        try {
-          const info = await lstat(resolve(this.repo, entry.path), {
-            bigint: true,
-          });
-          fingerprint.update(
-            `${info.size}:${info.mtimeNs}:${info.mode}:${info.ino}`,
-          );
-        } catch (error) {
-          if (error?.code !== "ENOENT") throw error;
-          fingerprint.update("deleted");
-        }
-      }
-      try {
-        const indexPath = (
-          await git(this.repo, ["rev-parse", "--git-path", "index"])
-        ).trim();
-        const index = await lstat(resolve(this.repo, indexPath), {
-          bigint: true,
-        });
-        fingerprint.update(
-          `\0index:${index.size}:${index.mtimeNs}:${index.ino}`,
-        );
-      } catch (error) {
-        if (error?.code !== "ENOENT") throw error;
-      }
-      try {
-        fingerprint.update(
-          `\0head:${(await git(this.repo, ["rev-parse", "--verify", "HEAD"])).trim()}`,
-        );
-      } catch {
-        fingerprint.update("\0head:unborn");
-      }
+      await this.updateWorkingStateFingerprint(fingerprint, entries);
     }
     return {
       fingerprint: fingerprint.digest("hex"),

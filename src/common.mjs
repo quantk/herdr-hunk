@@ -159,18 +159,35 @@ export function withStateLock(stateDir, callback) {
     throw new Error(`Cannot initialize plugin state lock: ${error.message}`);
   }
 
+  let result;
+  let callbackError;
   try {
-    return callback();
-  } finally {
+    result = callback();
+  } catch (error) {
+    callbackError = error;
+  }
+
+  let cleanupError;
+  try {
     if (descriptor != null) closeSync(descriptor);
-    try {
-      unlinkSync(path);
-    } catch (error) {
-      if (error?.code !== "ENOENT") {
-        throw new Error(`Cannot unlock plugin state: ${error.message}`);
-      }
+  } catch (error) {
+    cleanupError = error;
+  }
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if (error?.code !== "ENOENT" && cleanupError == null) {
+      cleanupError = error;
     }
   }
+
+  if (callbackError != null) {
+    throw callbackError;
+  }
+  if (cleanupError != null) {
+    throw new Error(`Cannot unlock plugin state: ${cleanupError.message}`);
+  }
+  return result;
 }
 
 export function upsertReview(state, review) {

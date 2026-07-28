@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the real Bun/OpenTUI pane in a pseudo-terminal."""
 
+import errno
 import fcntl
 import os
 import pty
@@ -27,8 +28,9 @@ def read_available(master: int, output: bytearray, timeout: float) -> None:
         return
     try:
         output.extend(os.read(master, 65536))
-    except OSError:
-        pass
+    except OSError as error:
+        if error.errno != errno.EIO:
+            raise
 
 
 def prepare_test_process() -> None:

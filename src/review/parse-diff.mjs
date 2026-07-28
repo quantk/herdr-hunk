@@ -102,11 +102,7 @@ function finalizeFile(file, generation) {
       return createRow(
         file,
         hunk,
-        pending.kind,
-        pending.oldLine,
-        pending.newLine,
-        pending.text,
-        occurrence,
+        { ...pending, occurrence },
       );
     });
     delete hunk.pendingRows;

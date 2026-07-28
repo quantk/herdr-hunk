@@ -4,7 +4,6 @@ import {
   buildAgentPrompt,
   describeCommandFailure,
   loadPromptTemplate,
-  parseCommandJson,
   parseContext,
   readState,
   resolveGitRoot,

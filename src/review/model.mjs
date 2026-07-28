@@ -12,7 +12,11 @@ export function stableId(...parts) {
     .slice(0, 24);
 }
 
-export function createRow(file, hunk, kind, oldLine, newLine, text, occurrence) {
+export function createRow(
+  file,
+  hunk,
+  { kind, oldLine, newLine, text, occurrence },
+) {
   return {
     id: stableId(
       file.id,

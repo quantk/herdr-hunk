@@ -33,7 +33,7 @@ const MAX_SIDEBAR_WIDTH = 80;
 const MIN_DIFF_WIDTH = 32;
 
 function clear(renderable) {
-  for (const child of [...renderable.getChildren()]) {
+  for (const child of renderable.getChildren()) {
     renderable.remove(child);
     child.destroyRecursively();
   }
