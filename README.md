@@ -148,7 +148,7 @@ The review pane uses this stable key contract:
 | Keys | Action |
 | --- | --- |
 | `1` / `2` / `3` | Working tree / branch / last observed turn |
-| arrows or `j` / `k` | Previous/next diff row |
+| arrows or `j` / `k` | Previous/next diff row or detached comment |
 | `Ctrl+U` / `Ctrl+D` | Move up/down by half a visible page |
 | `[` / `]` | Previous/next separated change block |
 | `{` / `}` | Previous/next file |
@@ -158,6 +158,7 @@ The review pane uses this stable key contract:
 | `s` | Choose old/new target for an unchanged context line |
 | `c` | Comment on the selected line/range |
 | `e` | Edit a saved comment at the current location |
+| `x` | Mark a saved comment resolved or reopen it |
 | `d`, then `d` | Confirm deletion of a saved comment |
 | `n` | Show/hide saved comments; arrows select and Enter jumps |
 | `r` | Refresh immediately |
@@ -202,10 +203,22 @@ context lines, which exist on both sides of a diff; additions always target
 `new`, and deletions always target `old`.
 
 Only a nonempty comment explicitly saved with `Ctrl+S` reaches disk. Cancelled
-and unfinished comments cannot reach `F7`. Saved comments remain visible and
-editable if their original location becomes stale. Comments are isolated by
-scope; last-turn comments are additionally tied to that exact turn baseline.
-`F7` inserts only saved human comments from the currently active scope.
+and unfinished comments cannot reach `F7`. Every new comment starts open.
+Pressing `F7` does not resolve it because the action inserts a draft without
+knowing whether the user submits it. Use `x` at an inline comment or in the
+`n` list to mark it resolved; use `x` again to reopen it. Editing a resolved
+comment also reopens it.
+
+Open comments whose original code can no longer be anchored remain visible as
+detached comment cards and in the `n` list. When their former selected text has
+one exact location in the current diff, the card stays beneath that text,
+including when it now appears as a deletion. Missing or ambiguous text uses a
+bottom-of-diff fallback. Detached cards participate in `j`/`k` navigation and
+support the same `e`, `x`, and `d d` actions. Resolved comments remain in the
+saved history with a muted marker instead of being deleted. Comments are
+isolated by scope; last-turn comments are additionally tied to that exact turn
+baseline. `F7` inserts only open saved human comments from the currently active
+scope, so resolved feedback is not repeated.
 
 Press `F7` from:
 
@@ -217,9 +230,10 @@ Press `F7` from:
 
 Every fallback must be unique. Ambiguous reviews produce an actionable error
 instead of selecting the newest one. The structured draft includes file,
-old/new side, line/range, selected context, stale warnings, and comment text.
-The plugin focuses the recorded source agent and inserts the draft with
-`keys: []`; it does not clear existing input or submit it.
+old/new side, line/range, selected context, detached warnings, and comment
+text. The plugin focuses the recorded source agent and inserts the draft with
+`keys: []`; it does not clear existing input, submit it, or change comment
+resolution state.
 
 ## Prompt template
 

@@ -93,6 +93,39 @@ test("controller finalizes a contiguous same-side range and keeps drafts off dis
   assert.equal(readStore(stateDir, "review-range", "/repo").notes.length, 1);
 });
 
+test("controller resolves, reopens, and reopens a resolved note when edited", () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "herdr-controller-resolve-"));
+  const controller = new ReviewController({
+    source: {},
+    stateDir,
+    store: emptyStore("review-resolve", "/repo"),
+  });
+  controller.model = model(1);
+  controller.rowIndex = 1;
+  controller.beginComment();
+  controller.saveEditor("Check this.");
+  const noteId = controller.notes[0].id;
+  assert.equal(controller.openNotes.length, 1);
+
+  controller.toggleResolved(noteId);
+  assert.equal(controller.openNotes.length, 0);
+  assert.equal(controller.resolvedNotes.length, 1);
+  assert.match(
+    readStore(stateDir, "review-resolve", "/repo").notes[0].resolvedAt,
+    /^20/,
+  );
+
+  controller.toggleResolved(noteId);
+  assert.equal(controller.openNotes.length, 1);
+  assert.equal(controller.store.notes[0].resolvedAt, null);
+
+  controller.toggleResolved(noteId);
+  controller.editNote(noteId);
+  controller.saveEditor("Check this again.");
+  assert.equal(controller.store.notes[0].resolvedAt, null);
+  assert.equal(controller.store.notes[0].body, "Check this again.");
+});
+
 test("controller can anchor an unchanged context line on either side", () => {
   const stateDir = mkdtempSync(join(tmpdir(), "herdr-controller-side-"));
   const contextModel = parseUnifiedDiff(

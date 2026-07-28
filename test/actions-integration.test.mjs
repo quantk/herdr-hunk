@@ -19,6 +19,7 @@ import {
 import {
   createHumanNote,
   emptyStore,
+  readStore,
   saveStore,
 } from "../src/review/store.mjs";
 import { contextHash } from "../src/review/anchors.mjs";
@@ -178,13 +179,22 @@ test("F7 loads the exact native store and inserts one unsubmitted human-only dra
     "",
     "branch",
   );
+  const resolvedBranchNote = {
+    ...createHumanNote(
+      "Already fixed; do not repeat.",
+      note.anchor,
+      "",
+      "branch",
+    ),
+    resolvedAt: new Date().toISOString(),
+  };
   saveStore(stateDir, {
     ...emptyStore("review-f7", repo),
     ui: {
       ...emptyStore("review-f7", repo).ui,
       scope: "branch",
     },
-    notes: [note, branchNote],
+    notes: [note, branchNote, resolvedBranchNote],
   });
 
   const socketPath = join(root, "herdr.sock");
@@ -231,7 +241,14 @@ test("F7 loads the exact native store and inserts one unsubmitted human-only dra
   assert.deepEqual(request.params.keys, []);
   assert.match(request.params.text, /src\/a\.js, new lines 2/);
   assert.match(request.params.text, /Use a clearer name/);
+  assert.doesNotMatch(request.params.text, /Already fixed; do not repeat/);
   assert.doesNotMatch(request.params.text, /Working-tree note must stay out/);
   assert.match(request.params.text, /const value = 2/);
   assert.doesNotMatch(request.params.text, /\nEnter\b/);
+  assert.equal(
+    readStore(stateDir, "review-f7", repo).notes.find(
+      (candidate) => candidate.id === branchNote.id,
+    ).resolvedAt,
+    null,
+  );
 });

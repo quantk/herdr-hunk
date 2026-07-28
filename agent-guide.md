@@ -137,19 +137,29 @@ Fix only problems introduced by this setup. An attached client may need
    bracket shortcuts also work from a Russian keyboard layout.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
 5. Press `F6` to hide/restore the same live pane.
-6. Press `F7` to insert validated saved comments into the exact source agent.
+6. Press `F7` to insert open validated saved comments into the exact source
+   agent.
 7. Review or edit the draft, then press Enter manually.
+8. After checking the agent's fixes, select each corrected comment inline or
+   in the `n` list and press `x` to resolve it. Press `x` again to reopen it.
 
 The plugin never submits, never clears existing agent input, excludes
 unfinished comments, and refuses ambiguous review routing. Saved comments are
 shown inline beneath their diff range and are kept separate per review scope;
-`F7` sends only the active scope. Last-turn tracking starts after the pane
-observes an idle-to-working transition and freezes when that turn finishes.
-Press `?` or `F1` inside the pane for the full keyboard/mouse reference. `s`
-chooses the old/new target only for unchanged context lines; additions are
-always new and deletions are always old. `Ctrl+C` closes the review pane
-cleanly; `F6` can reopen it with saved comments, active scope, sidebar
-visibility, and sidebar width intact.
+open comments that lose their exact code location remain visible as detached
+cards. A detached card follows its former text when that text has one exact
+location in the new diff, including on deleted lines; otherwise it remains in
+the bottom fallback. Use `j`/`k` to select detached cards and `e`, `x`, or
+`d d` to edit, resolve, or delete them. `F7` sends only open comments from the
+active scope and never resolves them automatically. Editing a resolved comment
+reopens it. Last-turn tracking starts after the pane observes an
+idle-to-working transition and freezes when that turn finishes. Press `?` or
+`F1` inside the pane for the full keyboard/mouse reference. `s` chooses the
+old/new target only for unchanged context lines; additions are always new and
+deletions are always old.
+`Ctrl+C` closes the review pane cleanly; `F6` can reopen it with saved
+comments, resolution state, active scope, sidebar visibility, sidebar width,
+and row-wrap preference intact.
 
 ## 6. Report
 

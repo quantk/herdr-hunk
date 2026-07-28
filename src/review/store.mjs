@@ -38,6 +38,12 @@ export function validateNote(note, repository) {
   assert(note.provenance === "human", "note provenance must be human");
   assert(typeof note.body === "string" && note.body.trim(), "note body is empty");
   assert(typeof note.title === "string", "note title must be a string");
+  assert(
+    note.resolvedAt == null ||
+      (typeof note.resolvedAt === "string" &&
+        Number.isFinite(Date.parse(note.resolvedAt))),
+    "invalid resolved timestamp",
+  );
   assert(REVIEW_SCOPES.includes(note.scope), "invalid note scope");
   assert(
     note.scopeBase == null || typeof note.scopeBase === "string",
@@ -201,6 +207,7 @@ export function migrateLegacyStore(legacy, reviewKey, repository, model) {
     provenance: "human",
     title: typeof note.title === "string" ? note.title : "",
     body: note.body,
+    resolvedAt: null,
     scope: "uncommitted",
     scopeBase: null,
     anchor: legacyAnchor(note),
@@ -258,6 +265,7 @@ export function readStore(stateDir, reviewKey, repository, { model } = {}) {
             notes: Array.isArray(parsed.notes)
               ? parsed.notes.map((note) => ({
                   ...note,
+                  resolvedAt: null,
                   scope: normalizeScope(note.scope),
                   scopeBase: null,
                 }))
@@ -300,6 +308,7 @@ export function createHumanNote(
     provenance: "human",
     title,
     body,
+    resolvedAt: null,
     scope: normalizeScope(scope),
     scopeBase:
       normalizeScope(scope) === "last-turn" ? scopeBase : null,

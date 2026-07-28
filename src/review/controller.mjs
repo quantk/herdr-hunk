@@ -45,6 +45,18 @@ export class ReviewController {
     );
   }
 
+  get openNotes() {
+    return this.notes.filter((note) => note.resolvedAt == null);
+  }
+
+  get resolvedNotes() {
+    return this.notes.filter((note) => note.resolvedAt != null);
+  }
+
+  get detachedOpenNotes() {
+    return this.openNotes.filter((note) => note.status === "stale");
+  }
+
   async refresh({ force = false } = {}) {
     if (this.refreshing) {
       this.refreshQueued = true;
@@ -272,6 +284,7 @@ export class ReviewController {
       notes[index] = {
         ...notes[index],
         body,
+        resolvedAt: null,
         updatedAt: new Date().toISOString(),
       };
     } else {
@@ -290,6 +303,24 @@ export class ReviewController {
     }
     this.store = saveStore(this.stateDir, { ...this.store, notes });
     this.editor = null;
+    return this.store;
+  }
+
+  toggleResolved(noteId) {
+    const notes = [...this.store.notes];
+    const index = notes.findIndex((note) => note.id === noteId);
+    if (index < 0) throw new Error("Saved note was not found.");
+    const resolving = notes[index].resolvedAt == null;
+    const now = new Date().toISOString();
+    notes[index] = {
+      ...notes[index],
+      resolvedAt: resolving ? now : null,
+      updatedAt: now,
+    };
+    this.store = saveStore(this.stateDir, { ...this.store, notes });
+    this.status = resolving
+      ? "Saved comment marked resolved."
+      : "Saved comment reopened.";
     return this.store;
   }
 

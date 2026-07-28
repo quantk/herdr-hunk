@@ -56,7 +56,7 @@ function noteAtRow(controller) {
   const row = controller.row;
   const file = controller.file;
   if (!row || !file) return undefined;
-  return controller.notes.find((note) => {
+  const matching = controller.notes.filter((note) => {
     if (
       note.status !== "anchored" ||
       (note.anchor.path !== file.path &&
@@ -72,6 +72,7 @@ function noteAtRow(controller) {
       line <= note.anchor.endLine
     );
   });
+  return matching.find((note) => note.resolvedAt == null) ?? matching[0];
 }
 
 function notesEndingAtRow(controller, file, row) {
@@ -86,6 +87,48 @@ function notesEndingAtRow(controller, file, row) {
     const line = note.anchor.side === "old" ? row.oldLine : row.newLine;
     return line === note.anchor.endLine;
   });
+}
+
+function detachedPlacements(controller, file) {
+  const byEndRow = new Map();
+  const placedIds = new Set();
+  const filePaths = new Set([file.path, file.previousPath].filter(Boolean));
+
+  for (const note of controller.detachedOpenNotes) {
+    const notePaths = [note.anchor.path, note.anchor.previousPath].filter(Boolean);
+    if (!notePaths.some((path) => filePaths.has(path))) continue;
+    const selectedText = note.anchor.selectedText;
+    if (!Array.isArray(selectedText) || selectedText.length === 0) continue;
+
+    const matches = new Map();
+    for (const side of ["old", "new"]) {
+      const rows = file.rows.filter((row) =>
+        Number.isInteger(side === "old" ? row.oldLine : row.newLine)
+      );
+      for (let index = 0; index <= rows.length - selectedText.length; index += 1) {
+        const candidate = rows.slice(index, index + selectedText.length);
+        const lines = candidate.map((row) =>
+          side === "old" ? row.oldLine : row.newLine
+        );
+        if (!lines.every((line, offset) => line === lines[0] + offset)) continue;
+        if (!candidate.every((row, offset) => row.text === selectedText[offset])) {
+          continue;
+        }
+        const key = candidate.map((row) => row.id).join("\0");
+        matches.set(key, candidate);
+      }
+    }
+
+    if (matches.size !== 1) continue;
+    const rows = [...matches.values()][0];
+    const endRow = rows.at(-1);
+    const notes = byEndRow.get(endRow.id) ?? [];
+    notes.push(note);
+    byEndRow.set(endRow.id, notes);
+    placedIds.add(note.id);
+  }
+
+  return { byEndRow, placedIds };
 }
 
 function commentTarget(controller) {
@@ -123,6 +166,8 @@ export class ReviewUI {
     this.renderVersion = 0;
     this.scrollFrameHandler = null;
     this.resizingSidebar = false;
+    this.selectedDetachedNoteId = null;
+    this.diffNavigation = [];
 
     this.root = new BoxRenderable(this.ctx, {
       id: "review-root",
@@ -248,17 +293,29 @@ export class ReviewUI {
       }
       const action =
         name === "up" || name === "k"
-          ? () => this.controller.moveRow(-1)
+          ? () => this.moveDiffSelection(-1)
           : name === "down" || name === "j"
-            ? () => this.controller.moveRow(1)
+            ? () => this.moveDiffSelection(1)
             : name === "["
-              ? () => this.controller.moveHunk(-1)
+              ? () => {
+                  this.selectedDetachedNoteId = null;
+                  this.controller.moveHunk(-1);
+                }
               : name === "]"
-                ? () => this.controller.moveHunk(1)
+                ? () => {
+                    this.selectedDetachedNoteId = null;
+                    this.controller.moveHunk(1);
+                  }
                 : name === "{"
-                  ? () => this.controller.moveFile(-1)
+                  ? () => {
+                      this.selectedDetachedNoteId = null;
+                      this.controller.moveFile(-1);
+                    }
                   : name === "}"
-                    ? () => this.controller.moveFile(1)
+                    ? () => {
+                        this.selectedDetachedNoteId = null;
+                        this.controller.moveFile(1);
+                      }
                     : name === "v"
                       ? () => this.controller.toggleRange()
                       : name === "s"
@@ -266,37 +323,48 @@ export class ReviewUI {
                       : name === "c"
                         ? () => this.controller.beginComment()
                         : name === "e"
-                          ? () => {
-                              const note = this.showNotes
-                                ? this.selectedNote()
-                                : noteAtRow(this.controller);
-                              if (!note) throw new Error("No saved note at this location.");
-                              this.controller.editNote(note.id);
-                            }
-                          : name === "d"
-                            ? () => this.confirmDelete()
-                            : name === "b"
-                              ? () => this.controller.toggleSidebar(defaultSidebarVisible)
-                              : name === "w"
+                              ? () => {
+                                  const note = this.showNotes
+                                    ? this.selectedNote()
+                                    : this.activeNote();
+                                  if (!note) throw new Error("No saved note at this location.");
+                                  this.controller.editNote(note.id);
+                                }
+                            : name === "x"
                                 ? () => {
-                                    this.controller.toggleRowWrap();
-                                    if (this.controller.rowWrap) {
-                                      this.diff.scrollLeft = 0;
+                                    const note = this.showNotes
+                                      ? this.selectedNote()
+                                      : this.activeNote();
+                                    if (!note) throw new Error("No saved note at this location.");
+                                    this.controller.toggleResolved(note.id);
+                                    if (note.id === this.selectedDetachedNoteId) {
+                                      this.selectedDetachedNoteId = null;
                                     }
                                   }
-                                : name === "n"
-                                  ? () => {
-                                      this.showNotes = !this.showNotes;
-                                    }
-                                  : name === "r"
-                                    ? () => this.controller.refresh({ force: true })
-                                    : name === "?" || name === "f1"
-                                      ? () => {
-                                          this.showHelp = !this.showHelp;
+                              : name === "d"
+                                ? () => this.confirmDelete()
+                                : name === "b"
+                                  ? () => this.controller.toggleSidebar(defaultSidebarVisible)
+                                  : name === "w"
+                                    ? () => {
+                                        this.controller.toggleRowWrap();
+                                        if (this.controller.rowWrap) {
+                                          this.diff.scrollLeft = 0;
                                         }
-                                      : name === "escape"
-                                        ? () => this.escape()
-                                        : null;
+                                      }
+                                    : name === "n"
+                                      ? () => {
+                                          this.showNotes = !this.showNotes;
+                                        }
+                                      : name === "r"
+                                        ? () => this.controller.refresh({ force: true })
+                                        : name === "?" || name === "f1"
+                                          ? () => {
+                                              this.showHelp = !this.showHelp;
+                                            }
+                                          : name === "escape"
+                                            ? () => this.escape()
+                                            : null;
       if (!action) return;
       key.preventDefault();
       try {
@@ -310,14 +378,55 @@ export class ReviewUI {
   }
 
   moveHalfPage(direction) {
+    this.selectedDetachedNoteId = null;
     const visibleRows = Math.max(1, this.diff.viewport.height);
     this.controller.moveRow(direction * Math.max(1, Math.floor(visibleRows / 2)));
+  }
+
+  moveDiffSelection(delta) {
+    if (!this.diffNavigation.length) {
+      this.controller.moveRow(delta);
+      return;
+    }
+    const currentKey = this.selectedDetachedNoteId
+      ? `note:${this.selectedDetachedNoteId}`
+      : `row:${this.controller.row?.id}`;
+    const currentIndex = Math.max(
+      0,
+      this.diffNavigation.findIndex((target) => target.key === currentKey),
+    );
+    const nextIndex = Math.max(
+      0,
+      Math.min(this.diffNavigation.length - 1, currentIndex + delta),
+    );
+    const target = this.diffNavigation[nextIndex];
+    if (target.type === "note") {
+      this.selectedDetachedNoteId = target.noteId;
+      if (Number.isInteger(target.rowIndex)) {
+        this.controller.rowIndex = target.rowIndex;
+      }
+    } else {
+      this.selectedDetachedNoteId = null;
+      this.controller.rowIndex = target.rowIndex;
+    }
+    this.controller.rangeStart = null;
+    this.controller.rangeEnd = null;
+    this.controller.persistUI();
+  }
+
+  activeNote() {
+    if (this.selectedDetachedNoteId) {
+      return this.controller.notes.find(
+        (note) => note.id === this.selectedDetachedNoteId,
+      );
+    }
+    return noteAtRow(this.controller);
   }
 
   confirmDelete() {
     const note = this.showNotes
       ? this.selectedNote()
-      : noteAtRow(this.controller);
+      : this.activeNote();
     if (!note) throw new Error("No saved note at this location.");
     if (this.deleteCandidate !== note.id) {
       this.deleteCandidate = note.id;
@@ -325,6 +434,9 @@ export class ReviewUI {
       return;
     }
     this.controller.deleteNote(note.id);
+    if (note.id === this.selectedDetachedNoteId) {
+      this.selectedDetachedNoteId = null;
+    }
     this.deleteCandidate = null;
     this.controller.status = "Saved note deleted.";
   }
@@ -362,6 +474,8 @@ export class ReviewUI {
       return;
     }
     this.controller.fileIndex = fileIndex;
+    this.selectedDetachedNoteId =
+      note.status === "stale" && note.resolvedAt == null ? note.id : null;
     const file = this.controller.file;
     const rowIndex = file.rows.findIndex((row) => {
       const line =
@@ -399,8 +513,44 @@ export class ReviewUI {
     this.renderer.requestRender();
   }
 
+  setDiffNavigation(file, placements = { byEndRow: new Map(), placedIds: new Set() }) {
+    const targets = [];
+    for (const [rowIndex, row] of (file?.rows ?? []).entries()) {
+      targets.push({
+        key: `row:${row.id}`,
+        type: "row",
+        rowIndex,
+      });
+      for (const note of placements.byEndRow.get(row.id) ?? []) {
+        targets.push({
+          key: `note:${note.id}`,
+          type: "note",
+          noteId: note.id,
+          rowIndex,
+        });
+      }
+    }
+    for (
+      const note of this.controller.detachedOpenNotes
+        .filter((candidate) => !placements.placedIds.has(candidate.id))
+        .slice(0, 20)
+    ) {
+      targets.push({
+        key: `note:${note.id}`,
+        type: "note",
+        noteId: note.id,
+        rowIndex: file?.rows.length ? file.rows.length - 1 : undefined,
+      });
+    }
+    this.diffNavigation = targets;
+  }
+
   scrollSelectedRowAfterLayout(version) {
-    const selectedId = this.controller.row?.id;
+    const selectedId = this.selectedDetachedNoteId
+      ? `detached-note:${this.selectedDetachedNoteId}`
+      : this.controller.row?.id
+        ? `row:${this.controller.row.id}`
+        : null;
     if (!selectedId) return;
     if (this.scrollFrameHandler) {
       this.renderer.off(CliRenderEvents.FRAME, this.scrollFrameHandler);
@@ -410,7 +560,7 @@ export class ReviewUI {
         this.scrollFrameHandler = null;
       }
       if (version !== this.renderVersion) return;
-      this.diff.scrollChildIntoView(`row:${selectedId}`);
+      this.diff.scrollChildIntoView(selectedId);
       this.renderer.requestRender();
     };
     this.scrollFrameHandler = handler;
@@ -456,7 +606,7 @@ export class ReviewUI {
 
   renderFiles() {
     const notesByPath = new Map();
-    for (const note of this.controller.notes) {
+    for (const note of this.controller.openNotes) {
       notesByPath.set(note.anchor.path, (notesByPath.get(note.anchor.path) ?? 0) + 1);
     }
     this.controller.model.files.forEach((file, index) => {
@@ -493,6 +643,7 @@ export class ReviewUI {
       this.diff.viewport.width || this.diff.width,
     );
     if (!file) {
+      this.setDiffNavigation(null);
       this.diff.add(
         text(
           this.ctx,
@@ -502,9 +653,11 @@ export class ReviewUI {
             : `No changes in ${scopeLabel(this.controller.scope)} scope.`,
         ),
       );
+      this.renderDetachedNotes();
       return;
     }
     if (file.kind !== "text") {
+      this.setDiffNavigation(file);
       this.diff.add(
         text(
           this.ctx,
@@ -513,9 +666,12 @@ export class ReviewUI {
           { height: Math.max(2, file.header.length + 1), fg: COLORS.warning },
         ),
       );
+      this.renderDetachedNotes();
       return;
     }
 
+    const detached = detachedPlacements(this.controller, file);
+    this.setDiffNavigation(file, detached);
     const filetype = detectFiletype(file.path, file.rows[0]?.text ?? "");
     this.diff.add(
       text(
@@ -541,7 +697,8 @@ export class ReviewUI {
         const currentIndex = rowIndex;
         rowIndex += 1;
         const selected =
-          currentIndex === this.controller.rowIndex ||
+          (this.selectedDetachedNoteId == null &&
+            currentIndex === this.controller.rowIndex) ||
           (this.controller.rangeStart != null &&
             currentIndex >= Math.min(
               this.controller.rangeStart,
@@ -551,15 +708,18 @@ export class ReviewUI {
               this.controller.rangeStart,
               this.controller.rangeEnd ?? this.controller.rowIndex,
             ));
-        const saved = this.controller.notes.some((note) => {
+        const rowNotes = this.controller.notes.filter((note) => {
           const line = note.anchor.side === "old" ? row.oldLine : row.newLine;
           return (
-            note.anchor.path === file.path &&
+            note.status === "anchored" &&
+            (note.anchor.path === file.path ||
+              note.anchor.path === file.previousPath) &&
             line != null &&
             line >= note.anchor.startLine &&
             line <= note.anchor.endLine
           );
         });
+        const detachedRowNotes = detached.byEndRow.get(row.id) ?? [];
         const container = new BoxRenderable(this.ctx, {
           id: `row:${row.id}`,
           height: this.controller.rowWrap ? "auto" : 1,
@@ -568,6 +728,7 @@ export class ReviewUI {
           flexDirection: "row",
           backgroundColor: rowBackground(row, selected),
           onMouseDown: (event) => {
+            this.selectedDetachedNoteId = null;
             if (event.modifiers.shift && this.controller.rangeStart == null) {
               this.controller.rangeStart = this.controller.rowIndex;
               this.controller.rangeEnd = null;
@@ -576,6 +737,7 @@ export class ReviewUI {
             this.render();
           },
           onMouseDrag: () => {
+            this.selectedDetachedNoteId = null;
             if (this.controller.rangeStart == null) {
               this.controller.rangeStart = this.controller.rowIndex;
               this.controller.rangeEnd = null;
@@ -588,7 +750,15 @@ export class ReviewUI {
           text(
             this.ctx,
             `prefix:${row.id}`,
-            `${saved ? "●" : " "}${rowPrefix(row)}`,
+            `${
+              rowNotes.some((note) => note.resolvedAt == null)
+                ? "●"
+                : detachedRowNotes.length
+                  ? "!"
+                : rowNotes.length
+                  ? "✓"
+                  : " "
+            }${rowPrefix(row)}`,
             {
               width: 13,
               fg:
@@ -625,27 +795,92 @@ export class ReviewUI {
         );
         this.diff.add(container);
         for (const note of notesEndingAtRow(this.controller, file, row)) {
-          const body = terminalSafeText(note.body);
-          const bodyHeight = Math.max(1, body.split("\n").length);
-          const comment = new BoxRenderable(this.ctx, {
-            id: `note:${note.id}`,
-            height: bodyHeight + 2,
-            marginLeft: 12,
-            border: true,
-            borderColor: COLORS.accent,
-            title: " saved comment ",
-            titleColor: COLORS.accent,
-            flexDirection: "column",
-          });
-          comment.add(
-            text(this.ctx, `note-body:${note.id}`, body, {
-              height: bodyHeight,
-              fg: COLORS.context,
-            }),
-          );
-          this.diff.add(comment);
+          this.addCommentCard(note);
+        }
+        for (const note of detachedRowNotes) {
+          this.addCommentCard(note, { detached: true, inline: true });
         }
       }
+    }
+    this.renderDetachedNotes(detached.placedIds);
+    if (
+      this.selectedDetachedNoteId &&
+      !this.diffNavigation.some(
+        (target) => target.noteId === this.selectedDetachedNoteId,
+      )
+    ) {
+      this.selectedDetachedNoteId = null;
+    }
+  }
+
+  addCommentCard(note, { detached = false, inline = false } = {}) {
+    const resolved = note.resolvedAt != null;
+    const body = terminalSafeText(note.body);
+    const bodyHeight = Math.max(1, body.split("\n").length);
+    const location =
+      `${terminalSafeText(note.anchor.path)}:${note.anchor.startLine}-${note.anchor.endLine}`;
+    const title = detached
+      ? ` open · detached · ${location} `
+      : resolved
+        ? " resolved comment "
+        : " open comment ";
+    const color = resolved
+      ? COLORS.muted
+      : detached
+        ? COLORS.warning
+        : COLORS.accent;
+    const comment = new BoxRenderable(this.ctx, {
+      id: `${detached ? "detached-note" : "note"}:${note.id}`,
+      height: bodyHeight + 2,
+      marginLeft: detached && !inline ? 0 : 12,
+      border: true,
+      borderColor: color,
+      backgroundColor:
+        note.id === this.selectedDetachedNoteId ? COLORS.selected : undefined,
+      title,
+      titleColor: color,
+      flexDirection: "column",
+      onMouseDown: () => {
+        if (!detached) return;
+        this.selectedDetachedNoteId = note.id;
+        this.render();
+      },
+    });
+    comment.add(
+      text(this.ctx, `note-body:${note.id}`, body, {
+        height: bodyHeight,
+        fg: resolved ? COLORS.muted : COLORS.context,
+      }),
+    );
+    this.diff.add(comment);
+  }
+
+  renderDetachedNotes(placedIds = new Set()) {
+    const detached = this.controller.detachedOpenNotes.filter(
+      (note) => !placedIds.has(note.id),
+    );
+    if (!detached.length) return;
+    this.diff.add(
+      text(
+        this.ctx,
+        "detached-notes-header",
+        `⚠ ${detached.length} open detached comment${detached.length === 1 ? "" : "s"} · press n to review · x resolves selected`,
+        { fg: COLORS.warning },
+      ),
+    );
+    const visible = detached.slice(0, 20);
+    for (const note of visible) {
+      this.addCommentCard(note, { detached: true });
+    }
+    if (detached.length > visible.length) {
+      this.diff.add(
+        text(
+          this.ctx,
+          "detached-notes-more",
+          `…and ${detached.length - visible.length} more; press n to review all saved comments.`,
+          { fg: COLORS.warning },
+        ),
+      );
     }
   }
 
@@ -680,21 +915,28 @@ export class ReviewUI {
       : this.showNotes
         ? this.deleteCandidate
           ? " saved notes — press d again to delete · Esc cancel "
-          : " saved notes — ↑/↓ select · Enter jump · e edit · d delete "
+          : " saved notes — ↑/↓ select · Enter jump · x resolve/reopen · e edit · d delete "
         : " status ";
     if (this.showHelp) {
       this.bottom.add(
         text(
           this.ctx,
           "help",
-          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · w row wrap · v range · s context target · c comment · e edit · n notes · d d delete · r refresh · Esc cancel`,
+          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · w row wrap · v range · s context target · c comment · e edit · x resolve/reopen · n notes · d d delete · r refresh · Esc cancel`,
           { height: 2 },
         ),
       );
     } else if (this.showNotes) {
       const allLines = this.controller.notes.map(
-        (note, index) =>
-          `${index === this.notesIndex ? "›" : " "} ${index + 1}. ${note.status === "stale" ? "⚠ stale " : ""}${note.anchor.path}:${note.anchor.startLine}-${note.anchor.endLine} ${note.body.split("\n")[0]}`,
+        (note, index) => {
+          const state =
+            note.resolvedAt != null
+              ? `✓ resolved${note.status === "stale" ? " · detached" : ""}`
+              : note.status === "stale"
+                ? "⚠ open · detached"
+                : "● open";
+          return `${index === this.notesIndex ? "›" : " "} ${index + 1}. ${state} · ${note.anchor.path}:${note.anchor.startLine}-${note.anchor.endLine} ${note.body.split("\n")[0]}`;
+        },
       );
       const start = Math.max(
         0,
@@ -710,11 +952,17 @@ export class ReviewUI {
         }),
       );
     } else {
+      const open = this.controller.openNotes.length;
+      const resolved = this.controller.resolvedNotes.length;
+      const detached = this.controller.detachedOpenNotes.length;
+      const summary =
+        `${open} open · ${resolved} resolved` +
+        (detached ? ` · ${detached} detached` : "");
       this.bottom.add(
         text(
           this.ctx,
           "status-text",
-          `${this.controller.status}  ${commentTarget(this.controller)} · b sidebar · w wrap · ?/F1 help · r refresh · c comment · n notes`,
+          `${this.controller.status}  ${summary} · ${commentTarget(this.controller)} · b sidebar · w wrap · ?/F1 help · r refresh · c comment · n notes`,
           { fg: this.controller.status.startsWith("Refresh failed") ? COLORS.warning : COLORS.context },
         ),
       );
