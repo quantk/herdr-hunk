@@ -32,6 +32,10 @@ def read_available(master: int, output: bytearray, timeout: float) -> None:
 
 
 def prepare_test_process() -> None:
+    signal.pthread_sigmask(
+        signal.SIG_UNBLOCK,
+        {signal.SIGINT, signal.SIGTERM},
+    )
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
