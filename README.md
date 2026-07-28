@@ -1,8 +1,8 @@
-<h1 align="center">Herdr Hunk Review</h1>
+<h1 align="center">Herdr Native Review</h1>
 
 <p align="center">
-  Review agent-authored changes in Hunk and draft inline feedback for the
-  correct agent without leaving Herdr.
+  Review an agent's live Git working tree, save line comments, and draft the
+  feedback into the exact source agent without leaving Herdr.
 </p>
 
 <p align="center">
@@ -10,448 +10,227 @@
   <a href="https://github.com/quantk/herdr-hunk/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/quantk/herdr-hunk"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Herdr 0.7.0 or newer" src="https://img.shields.io/badge/Herdr-%E2%89%A5%200.7.0-6c5ce7">
-  <img alt="Hunk 0.17.6 or newer" src="https://img.shields.io/badge/Hunk-%E2%89%A5%200.17.6-00b894">
+  <img alt="Bun 1.3.14" src="https://img.shields.io/badge/Bun-1.3.14-f9f1e1">
   <img alt="Node.js 18 or newer" src="https://img.shields.io/badge/Node.js-%E2%89%A5%2018-339933">
   <img alt="Linux and macOS" src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-4b5563">
 </p>
 
-<p align="center">
-  <a href="#installation">Installation</a> ·
-  <a href="#agent-assisted-setup">Agent setup</a> ·
-  <a href="#configure-keyboard-shortcuts">Configuration</a> ·
-  <a href="#customize-the-feedback-prompt">Prompt template</a> ·
-  <a href="#usage">Usage</a> ·
-  <a href="#troubleshooting">Troubleshooting</a>
-</p>
-
----
-
-Herdr Hunk Review connects three parts of the coding workflow:
-
-1. a coding agent running in a Herdr pane;
-2. a live [Hunk](https://github.com/modem-dev/hunk) diff review;
-3. the inline notes you want to draft for that exact agent.
-
-The review follows working-tree changes in real time. A single shortcut toggles
-the Hunk pane without terminating its session, so comments remain available
-while the review is hidden.
+The repository and plugin ID retain the legacy `herdr-hunk` /
+`quantick.hunk-review` names so existing installations and keybindings keep
+working. The runtime no longer invokes or requires Hunk.
 
 ## Features
 
-- Opens a live Hunk review beside the focused coding agent.
-- Associates every review with its source agent and Git repository.
-- Toggles the same Hunk session between a visible split and a background tab.
-- Preserves Hunk comments while the review is hidden.
-- Drafts only human review notes in the agent input without submitting them.
-- Resolves the correct review from the Hunk pane, source agent, or another pane
-  in the same Git repository.
-- Supports multiple agents, repositories, workspaces, and concurrent reviews.
+- Shows staged, unstaged, and untracked changes together in a unified diff.
+- Represents renames, deletions, binaries, submodules, mode-only changes,
+  symlinks, and oversized files without mutating Git state.
+- Refreshes approximately once per second while preserving logical selection.
+- Navigates files, hunks, and old/new source lines by keyboard and mouse.
+- Highlights JavaScript, JSX, TypeScript, TSX, JSON, Markdown, HTML, CSS,
+  shell, Python, Go, Rust, YAML, and TOML with bundled Tree-sitter assets.
+- Saves only explicit human comments; unfinished editor text stays in memory.
+- Re-anchors comments deterministically after refresh or marks them stale
+  without guessing.
+- Hides and restores the same live pane with `F6`.
+- Inserts saved comments into the associated agent with `F7`, preserving
+  existing input and never pressing Enter.
+- Migrates legacy human Hunk notes once, preserving an untouched `.v1.bak`.
 
-## Agent-assisted setup
-
-**Recommended:** let your coding agent perform the complete setup for you. It
-will inspect the machine, install missing dependencies and the plugin, preserve
-the existing Herdr configuration, add non-conflicting shortcuts, and validate
-the result.
-
-Paste this prompt into Codex, Claude, or another agent with terminal access:
-
-```text
-Set up Herdr Hunk Review on this machine.
-
-Read and follow this guide first:
-https://raw.githubusercontent.com/quantk/herdr-hunk/main/agent-guide.md
-
-Inspect the existing environment and Herdr config before making changes.
-Preserve unrelated settings, avoid duplicate keybindings, validate the final
-config, reload it, and report exactly what was changed.
-```
-
-The guide also prevents the setup agent from opening test reviews or inserting
-test prompts into agents that are already running.
-
-Prefer to see every step or use custom shortcuts? Continue with the manual
-installation below.
+Review actions are strictly read-only with respect to Git. They do not stage,
+unstage, revert, edit files, write refs, or create commits.
 
 ## Requirements
 
-Install these dependencies before installing the plugin:
-
-| Dependency | Minimum version | Purpose |
+| Dependency | Version | Purpose |
 | --- | ---: | --- |
-| [Herdr](https://herdr.dev/) | 0.7.0 | Plugin host and terminal workspace |
-| [Hunk](https://www.npmjs.com/package/hunkdiff) | 0.17.6 | Interactive diff review |
-| [Node.js](https://nodejs.org/) | 18 | Plugin runtime |
-| Git | Any recent version | Repository discovery and working-tree diff |
+| [Herdr](https://herdr.dev/) | 0.7.0+ | Plugin host and terminal workspace |
+| [Bun](https://bun.sh/) | 1.3.14 | Native OpenTUI review pane |
+| [Node.js](https://nodejs.org/) | 18+ | F6/F7 action processes and installation |
+| Git | Recent | Read-only working-tree acquisition |
 
-Supported platforms:
-
-- Linux
-- macOS
-
-Check the installed versions:
-
-```sh
-herdr --version
-hunk --version
-node --version
-git --version
-```
-
-Install Hunk globally if it is not already available:
-
-```sh
-npm install --global hunkdiff
-```
+Supported platforms are Linux and macOS on x64 and arm64. Opening a review
+performs no network access: OpenTUI and every required grammar, query, and WASM
+asset are installed or bundled ahead of time.
 
 ## Installation
 
-### Install from GitHub
-
-After the repository is published, install it directly with Herdr:
+Install Bun, Node.js, Git, and Herdr first, then:
 
 ```sh
 herdr plugin install quantk/herdr-hunk
-```
-
-Confirm that the plugin is installed and enabled:
-
-```sh
 herdr plugin list
 herdr plugin action list --plugin quantick.hunk-review
 ```
 
-The action list should contain:
+Herdr previews and runs the manifest build command
+`npm ci --omit=dev` before registering a GitHub installation. A failed
+dependency install aborts cleanly.
 
-- `open-review` — toggle the Hunk review;
-- `send-notes` — draft human notes for the associated agent.
-
-### Link a local checkout
-
-Use `plugin link` when developing the plugin or running an unpublished
-checkout:
+For a local checkout:
 
 ```sh
 git clone https://github.com/quantk/herdr-hunk.git
 cd herdr-hunk
+npm ci
 herdr plugin link "$PWD" --enabled
 ```
 
-A linked plugin runs directly from the checkout. Source changes are picked up
-by the next action invocation, so reinstalling is not necessary.
+`plugin link` intentionally does not run manifest build commands, so `npm ci`
+is required before linking.
 
-## Configure keyboard shortcuts
+## Configure shortcuts
 
-Herdr plugin manifests do not define or override global keybindings. Add the
-shortcuts explicitly to the Herdr configuration file:
-
-```text
-~/.config/herdr/config.toml
-```
-
-Append the following entries:
+Add non-conflicting entries to `~/.config/herdr/config.toml`:
 
 ```toml
 [[keys.command]]
 key = "f6"
 type = "plugin_action"
 command = "quantick.hunk-review.open-review"
-description = "Toggle Hunk review"
+description = "Toggle native review"
 
 [[keys.command]]
 key = "f7"
 type = "plugin_action"
 command = "quantick.hunk-review.send-notes"
-description = "Draft Hunk notes for agent"
+description = "Draft review notes for agent"
 ```
 
-Validate and reload the configuration:
+Then validate and reload:
 
 ```sh
 herdr config check
 herdr server reload-config
 ```
 
-If an already attached client does not pick up the new shortcuts, press
-`Ctrl+B`, release it, then press `Shift+R`, or detach and attach Herdr again.
+## Usage
 
-The examples use `F6` and `F7`, but any valid Herdr key combination can be
-used. Function keys are a reliable default because many terminals intercept
-`Alt`-based combinations.
+Focus a detected coding agent inside a Git repository and press `F6`. The
+native review opens beside that exact agent. Pressing `F6` again from the agent
+or review moves the live pane to a background tab; another press restores the
+same process and state.
 
-## Customize the feedback prompt
+The review pane uses this stable key contract:
 
-The plugin includes an English default prompt. To customize its wording, find
-the plugin configuration directory:
+| Keys | Action |
+| --- | --- |
+| arrows or `j` / `k` | Previous/next diff row |
+| `[` / `]` | Previous/next hunk |
+| `{` / `}` | Previous/next file |
+| `v` | Begin/end contiguous range selection |
+| `s` | Prefer old/new side when commenting on context |
+| `c` | Comment on the selected line/range |
+| `e` | Edit a saved comment at the current location |
+| `d`, then `d` | Confirm deletion of a saved comment |
+| `n` | Show/hide saved comments; arrows select and Enter jumps |
+| `r` | Refresh immediately |
+| `?` | Show/hide help |
+| `Esc` | Cancel editor, range, confirmation, or overlay |
+| `Ctrl+S` | Save the active multiline comment |
+
+Mouse wheel scrolling, file and row clicks, Shift-click range extension, drag
+selection, and editor cursor placement are supported. Narrow panes collapse
+the file list; `n` reveals it as the compact overlay area.
+
+Only a nonempty comment explicitly saved with `Ctrl+S` reaches disk. Cancelled
+and unfinished comments cannot reach `F7`. Saved comments remain visible and
+editable if their original location becomes stale.
+
+Press `F7` from:
+
+- the exact review pane;
+- its source agent;
+- a pane in the uniquely matching workspace/repository;
+- a pane in the uniquely matching repository;
+- anywhere when only one active review exists.
+
+Every fallback must be unique. Ambiguous reviews produce an actionable error
+instead of selecting the newest one. The structured draft includes file,
+old/new side, line/range, selected context, stale warnings, and comment text.
+The plugin focuses the recorded source agent and inserts the draft with
+`keys: []`; it does not clear existing input or submit it.
+
+## Prompt template
+
+Create `prompt-template.md` in:
 
 ```sh
 herdr plugin config-dir quantick.hunk-review
 ```
 
-Create `prompt-template.md` in the printed directory. You can start from the
-[example template](examples/prompt-template.md):
+Use [the example](examples/prompt-template.md). Supported placeholders are:
 
-```md
-I finished reviewing your changes in Hunk.
-Repository: {{repository}}
+- `{{repository}}` — absolute Git repository root;
+- `{{notes}}` — numbered, structured saved comments;
+- `{{note_count}}` — saved comment count.
 
-Address all {{note_count}} review notes below.
+`{{notes}}` is required. Unknown placeholders, an empty template, malformed
+stores, non-human provenance, mismatched repositories/review keys, and drafts
+larger than 128 KiB fail before any agent input is changed.
 
-{{notes}}
+## Persistence and recovery
 
-After addressing the notes, run the relevant checks and summarize the result.
-```
+Each review is persisted atomically at
+`HERDR_PLUGIN_STATE_DIR/snapshots/<reviewKey>.json` with mode `0600`. The v2
+store validates the exact review/repository association, repository-relative
+paths, old/new ranges, context hashes, timestamps, size limits, unique IDs,
+and hard-coded `human` provenance.
 
-Supported placeholders:
+If a pane is closed unexpectedly, reopening the same agent/repository reuses
+its `reviewKey` and restores saved comments and the last selected location.
+Legacy snapshots are migrated idempotently; only legacy note forms already
+recognized as human are imported, and unlocatable notes become stale.
 
-| Placeholder | Value |
-| --- | --- |
-| `{{repository}}` | Absolute Git repository root |
-| `{{notes}}` | Numbered notes with file and line or hunk locations |
-| `{{note_count}}` | Number of saved human notes |
-
-`{{notes}}` is required. Unknown placeholders and an empty template produce an
-actionable error instead of inserting a partial prompt. The template is read
-each time `F7` runs, so it can be changed without reinstalling the plugin or
-restarting Herdr.
-
-## Usage
-
-### 1. Open a review
-
-Focus a Herdr pane containing a detected coding agent inside a Git repository,
-then press:
-
-```text
-F6
-```
-
-Hunk opens in a split beside the agent and watches the working-tree diff.
-
-### 2. Add inline notes
-
-Navigate to the relevant change in Hunk and press `c` to create a human note.
-Use the controls shown in the note editor to save it. Press `?` in Hunk to see
-the complete key reference.
-
-Only saved human notes are included. An unfinished Hunk note is not included.
-
-### 3. Hide or restore the review
-
-Press `F6` again from either the source agent pane or its Hunk pane.
-
-- When visible, the live Hunk pane moves to a background tab.
-- When hidden, the same pane moves back beside the agent.
-
-This is a true session-preserving toggle: the Hunk process, session ID, current
-position, and comments remain alive.
-
-Do not use Herdr's pane-close shortcut (`Ctrl+B`, then `x`) when you only want
-to hide the review. That command terminates the pane.
-
-### 4. Draft notes for the agent
-
-Press:
-
-```text
-F7
-```
-
-`F7` can be invoked from:
-
-- the Hunk pane;
-- the associated agent pane;
-- another pane in the same Git repository;
-- any pane, when only one Hunk review is running.
-
-When multiple reviews are active and the current pane does not identify a
-repository, focus the intended Hunk or source agent before pressing `F7`.
-
-The plugin focuses the associated agent and inserts all saved human notes as
-one structured draft containing the repository, file paths, line or hunk
-locations, and note text. AI and agent annotations are excluded. The draft is
-not submitted: review or edit it, then press Enter yourself. Existing text in
-the agent input is not cleared; the draft is inserted at the current cursor.
-The generated prompt has a 128 KiB safety limit.
-
-## How review association works
-
-Each review records:
-
-- the source agent pane;
-- the Git repository root;
-- the Herdr workspace and review pane;
-- the exact live Hunk session.
-
-This prevents feedback from one project from being sent to an agent in another
-project. Stale state belonging to closed panes is ignored.
+Limits are 64 KiB per comment, 500 comments per review, 2 MiB per text file,
+16 MiB total patch data, and 128 KiB for the generated F7 draft. Large and
+non-text entries stay visible as metadata instead of freezing the pane.
 
 ## Troubleshooting
 
-### A shortcut does nothing
-
-Check the Herdr configuration:
-
-```sh
-herdr config check
-```
-
-Then confirm that the plugin actions are registered:
-
-```sh
-herdr plugin action list --plugin quantick.hunk-review
-```
-
-Some terminals or desktop environments reserve function keys. If necessary,
-replace `f6` and `f7` with unused Herdr key combinations.
-
-### Herdr cannot find an agent
-
-`F6` must initially be invoked from a pane containing an agent detected by
-Herdr. Confirm detection with:
-
-```sh
-herdr agent list
-```
-
-The agent must be working inside a Git repository.
-
-### “This review has no human notes”
-
-The note must be saved in Hunk before pressing `F7`. Draft text is not included
-in the Hunk session snapshot.
-
-### The custom prompt template is rejected
-
-Make sure `prompt-template.md` is non-empty, contains `{{notes}}`, and uses only
-the supported placeholders listed above. Inspect the active configuration
-directory with:
-
-```sh
-herdr plugin config-dir quantick.hunk-review
-```
-
-### Several reviews are running
-
-Focus the intended Hunk pane, its source agent, or another pane inside the same
-Git repository, then press `F7` again.
-
-### Inspect plugin logs
-
-```sh
-herdr plugin log list --plugin quantick.hunk-review --limit 20
-```
-
-### Reset a local installation
-
-Unlinking removes the Herdr registration but does not delete the checkout:
-
-```sh
-herdr plugin unlink quantick.hunk-review
-herdr plugin link "$PWD" --enabled
-```
-
-For a GitHub-managed installation:
-
-```sh
-herdr plugin uninstall quantick.hunk-review
-herdr plugin install quantk/herdr-hunk
-```
+- `F6` requires a Herdr-detected agent whose current directory is in a Git
+  repository. Check `herdr agent list`.
+- If the pane reports a Tree-sitter load failure, reinstall the plugin; all
+  grammar assets must exist in the installed artifact.
+- If several reviews match, focus the intended review or source agent.
+- A saved note is required before `F7`; editor text alone is intentionally
+  excluded.
+- Inspect recent failures with
+  `herdr plugin log list --plugin quantick.hunk-review --limit 20`.
+- Validate shortcuts with `herdr config check`, then reload the server config.
 
 ## Development
 
-Clone and link the repository:
-
 ```sh
-git clone https://github.com/quantk/herdr-hunk.git
-cd herdr-hunk
-herdr plugin link "$PWD" --enabled
-```
-
-Run the tests and syntax checks:
-
-```sh
-npm test
-npm run check
-```
-
-Useful development commands:
-
-```sh
-herdr plugin list
-herdr plugin action list --plugin quantick.hunk-review
-herdr plugin log list --plugin quantick.hunk-review --limit 20
-```
-
-## Releasing
-
-The project follows [Semantic Versioning](https://semver.org/):
-
-- patch (`0.1.0` → `0.1.1`) for backwards-compatible fixes;
-- minor (`0.1.0` → `0.2.0`) for backwards-compatible features;
-- major (`0.1.0` → `1.0.0`) for breaking changes.
-
-The version is stored in both `package.json` and `herdr-plugin.toml`. Prepare a
-release with:
-
-```sh
-npm run release:prepare -- 0.2.0
+npm ci
 npm run version:check
 npm test
 npm run check
 ```
 
-Review and commit the version change:
+`npm test` runs runtime-neutral Node tests plus OpenTUI headless tests under the
+exact Bun version. CI keeps Node.js 18, 20, and 22 coverage and smoke-tests a
+fresh packed installation on Linux/macOS x64/arm64, including real PTY
+SIGINT/SIGTERM cleanup and terminal restoration.
 
-```sh
-git add package.json package-lock.json herdr-plugin.toml
-git commit -m "chore(release): v0.2.0"
-```
-
-If the repository has no `package-lock.json`, omit it from `git add`.
-
-Create and push an annotated tag:
-
-```sh
-git tag -a v0.2.0 -m "v0.2.0"
-git push origin main
-git push origin v0.2.0
-```
-
-Pushing a `vX.Y.Z` tag starts the Release workflow. It verifies that the tag,
-`package.json`, and `herdr-plugin.toml` contain the same version, runs the test
-suite and syntax checks, then creates a GitHub Release with automatically
-generated release notes.
-
-The CI workflow runs the same version check, tests, and syntax checks for every
-push to `main` and every pull request on Node.js 18, 20, and 22.
-
-## Architecture
+The runtime boundaries are:
 
 ```text
-F6 / open-review
-    │
-    ├── resolve the focused Herdr agent and Git repository
-    ├── restore an existing live review, when present
-    └── otherwise open a plugin-owned Hunk pane in watch mode
-
-Hunk review pane
-    │
-    ├── follow working-tree changes
-    ├── retain human inline notes
-    └── publish snapshots to plugin state
-
-F7 / send-notes
-    │
-    ├── resolve the matching live review
-    ├── collect saved human notes
-    └── insert a configurable draft without submitting it
+Node F6 action -> exact agent/repository association -> Bun/OpenTUI pane
+                                                     -> read-only Git model
+                                                     -> atomic human-note store
+Node F7 action -> exact active review -> validated store -> unsubmitted draft
 ```
 
-The plugin is implemented as out-of-process Node.js actions declared in
-`herdr-plugin.toml`. It does not modify agent code, Git state, or repository
-files.
+The review model, Git source, parser, anchors, store, language detection, and
+controller remain independent of OpenTUI so their invariants can be tested
+without a terminal.
+
+## Release
+
+Release preparation, tags, pushes, and publishing are separate explicit
+actions. See `AGENTS.md` for the required SemVer and release procedure.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). Bundled grammar license notices are
+kept under `assets/tree-sitter/`.

@@ -1,13 +1,10 @@
-import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import {
-  findHunkSessionId,
-  getSnapshotPath,
-  parseCommandJson,
-  restoreCommentsFromReview,
-  unwrapHunkReviewResponse,
-  writeJsonAtomic,
-} from "./common.mjs";
+import { createCliRenderer } from "@opentui/core";
+import { reanchorNotes } from "./review/anchors.mjs";
+import { ReviewController } from "./review/controller.mjs";
+import { GitSource } from "./review/git-source.mjs";
+import { createHighlighter } from "./review/highlighting.mjs";
+import { readStore, saveStore } from "./review/store.mjs";
+import { ReviewUI } from "./review/ui.mjs";
 
 const repo = process.env.HERDR_HUNK_REPO;
 const reviewKey = process.env.HERDR_HUNK_REVIEW_KEY;
@@ -15,171 +12,94 @@ const stateDir = process.env.HERDR_PLUGIN_STATE_DIR;
 
 if (!repo || !reviewKey || !stateDir) {
   process.stderr.write(
-    "Hunk Review: missing launch context. Open this pane through the “Review changes with Hunk” action.\n",
+    "Review: missing launch context. Open this pane through the “Review changes” action.\n",
   );
   process.exit(1);
 }
 
-const hunkCheck = spawnSync("hunk", ["--version"], {
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"],
-});
-if (hunkCheck.status !== 0) {
-  process.stderr.write(
-    "Hunk Review: `hunk` is not available on PATH. Install it with `npm i -g hunkdiff`.\n",
-  );
-  process.exit(1);
-}
+let renderer;
+let highlighter;
+let timer;
+let shuttingDown = false;
 
-const snapshotPath = getSnapshotPath(stateDir, reviewKey);
-let snapshotInProgress = false;
-let hunkSessionId;
-let restoreComplete = false;
-
-function readRestoreComments() {
+async function shutdown(exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (timer) clearInterval(timer);
   try {
-    const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
-    return restoreCommentsFromReview(
-      unwrapHunkReviewResponse(snapshot.review),
-    );
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return [];
-    }
-    return [];
-  }
-}
-
-const restoreComments = readRestoreComments();
-restoreComplete = restoreComments.length === 0;
-
-function resolveHunkSessionId() {
-  if (hunkSessionId) {
-    return hunkSessionId;
-  }
-  const result = spawnSync("hunk", ["session", "list", "--json"], {
-    cwd: repo,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 4_000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  if (result.status !== 0 || !result.stdout.trim()) {
-    return undefined;
-  }
-  hunkSessionId = findHunkSessionId(
-    parseCommandJson(result.stdout, "hunk session list"),
-    hunk.pid,
-    repo,
-  );
-  return hunkSessionId;
-}
-
-function restoreCachedComments(sessionId) {
-  const result = spawnSync(
-    "hunk",
-    [
-      "session",
-      "comment",
-      "apply",
-      sessionId,
-      "--stdin",
-      "--focus",
-      "--json",
-    ],
-    {
-      cwd: repo,
-      encoding: "utf8",
-      input: JSON.stringify({ comments: restoreComments }),
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 4_000,
-      maxBuffer: 4 * 1024 * 1024,
-    },
-  );
-  return result.status === 0;
-}
-
-function captureSnapshot() {
-  if (snapshotInProgress) {
-    return;
-  }
-  snapshotInProgress = true;
-  try {
-    const sessionId = resolveHunkSessionId();
-    if (!sessionId) {
-      return;
-    }
-    if (!restoreComplete) {
-      if (!restoreCachedComments(sessionId)) {
-        return;
-      }
-      restoreComplete = true;
-      return;
-    }
-    const result = spawnSync(
-      "hunk",
-      [
-        "session",
-        "review",
-        sessionId,
-        "--include-notes",
-        "--json",
-      ],
-      {
-        cwd: repo,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 4_000,
-        maxBuffer: 16 * 1024 * 1024,
-      },
-    );
-    if (result.status === 0 && result.stdout.trim()) {
-      const review = unwrapHunkReviewResponse(
-        parseCommandJson(result.stdout, "hunk session review"),
-      );
-      writeJsonAtomic(snapshotPath, {
-        capturedAt: new Date().toISOString(),
-        review,
-      });
-    }
+    await highlighter?.destroy();
   } catch {
-    // The session may not be registered yet, or may already be closing.
-  } finally {
-    snapshotInProgress = false;
+    // Terminal restoration is more important than a parser worker error.
   }
+  renderer?.destroy();
+  process.exitCode = exitCode;
 }
 
-const hunk = spawn("hunk", ["diff", "--watch"], {
-  cwd: repo,
-  env: process.env,
-  stdio: "inherit",
-});
-
-const timer = setInterval(captureSnapshot, 1_000);
-timer.unref();
-setTimeout(captureSnapshot, 350).unref();
-
-function forwardSignal(signal) {
-  captureSnapshot();
-  if (!hunk.killed) {
-    hunk.kill(signal);
+async function main() {
+  const source = new GitSource(repo);
+  const initialModel = await source.refresh(1);
+  let store = readStore(stateDir, reviewKey, repo, { model: initialModel });
+  const notes = reanchorNotes(store.notes, initialModel);
+  if (JSON.stringify(notes) !== JSON.stringify(store.notes)) {
+    store = saveStore(stateDir, { ...store, notes });
   }
+
+  const controller = new ReviewController({ source, store, stateDir });
+  controller.model = initialModel;
+  controller.status = `${initialModel.files.length} changed file${initialModel.files.length === 1 ? "" : "s"}.`;
+  const storedFile = initialModel.files.findIndex(
+    (file) => file.path === store.ui?.filePath,
+  );
+  if (storedFile >= 0) {
+    controller.fileIndex = storedFile;
+    const storedRow = controller.file.rows.findIndex(
+      (row) => row.id === store.ui?.rowId,
+    );
+    if (storedRow >= 0) controller.rowIndex = storedRow;
+  }
+
+  highlighter = await createHighlighter();
+  renderer = await createCliRenderer({
+    exitOnCtrlC: false,
+    clearOnShutdown: true,
+    useMouse: true,
+    enableMouseMovement: true,
+    screenMode: "alternate-screen",
+  });
+  const ui = new ReviewUI(renderer, controller, highlighter);
+  await ui.render();
+  renderer.start();
+
+  timer = setInterval(async () => {
+    const changed = await controller.refresh();
+    if (changed) await ui.render();
+  }, 1_000);
+  timer.unref();
 }
 
-process.on("SIGINT", () => forwardSignal("SIGINT"));
-process.on("SIGTERM", () => forwardSignal("SIGTERM"));
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    shutdown(0).catch((error) => {
+      process.stderr.write(`Review: cleanup failed: ${error.message}\n`);
+      process.exitCode = 1;
+    });
+  });
+}
 
-hunk.on("error", (error) => {
-  clearInterval(timer);
-  process.stderr.write(`Hunk Review: cannot start Hunk: ${error.message}\n`);
-  process.exitCode = 1;
+process.on("uncaughtException", async (error) => {
+  process.stderr.write(`Review: ${error.message}\n`);
+  await shutdown(1);
+});
+process.on("unhandledRejection", async (error) => {
+  process.stderr.write(`Review: ${error instanceof Error ? error.message : String(error)}\n`);
+  await shutdown(1);
 });
 
-hunk.on("exit", (code, signal) => {
-  clearInterval(timer);
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
-  }
-  process.exitCode = code ?? 1;
-});
+try {
+  await main();
+} catch (error) {
+  process.stderr.write(
+    `Review: ${error instanceof Error ? error.message : String(error)}\n`,
+  );
+  await shutdown(1);
+}

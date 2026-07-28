@@ -1,0 +1,113 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import {
+  chmodSync,
+  mkdtempSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { GitSource } from "../src/review/git-source.mjs";
+
+function git(repo, ...args) {
+  return execFileSync("git", ["-C", repo, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function createRepo() {
+  const repo = mkdtempSync(join(tmpdir(), "herdr-native-git-"));
+  git(repo, "init", "-q");
+  git(repo, "config", "user.email", "test@example.com");
+  git(repo, "config", "user.name", "Test");
+  return repo;
+}
+
+function repositorySnapshot(repo) {
+  return {
+    status: git(repo, "status", "--porcelain=v1", "--untracked-files=all"),
+    index: git(repo, "ls-files", "--stage"),
+    refs: git(repo, "show-ref"),
+    diff: git(repo, "diff", "--binary", "HEAD"),
+    staged: git(repo, "diff", "--binary", "--cached", "HEAD"),
+  };
+}
+
+test("GitSource combines staged, unstaged, renamed, untracked, binary, symlink, and large entries read-only", async () => {
+  const repo = createRepo();
+  const childRepo = createRepo();
+  writeFileSync(join(childRepo, "lib.txt"), "library\n");
+  git(childRepo, "add", ".");
+  git(childRepo, "commit", "-qm", "library");
+  writeFileSync(join(repo, "a.js"), "const value = 1;\n");
+  writeFileSync(join(repo, "old name.txt"), "old\n");
+  writeFileSync(join(repo, "tool.sh"), "#!/bin/sh\n");
+  writeFileSync(join(repo, "deleted.txt"), "gone\n");
+  writeFileSync(join(repo, ".gitignore"), "*.ignored\n");
+  git(
+    repo,
+    "-c",
+    "protocol.file.allow=always",
+    "submodule",
+    "add",
+    "-q",
+    childRepo,
+    "vendor/lib",
+  );
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "initial");
+
+  writeFileSync(join(repo, "a.js"), "const value = 2;\n");
+  git(repo, "add", "a.js");
+  writeFileSync(join(repo, "a.js"), "const value = 3;\n");
+  git(repo, "mv", "old name.txt", "new name.txt");
+  writeFileSync(join(repo, "new file.py"), "print('hello')\n");
+  writeFileSync(join(repo, "binary.bin"), Buffer.from([0, 1, 2, 3]));
+  writeFileSync(join(repo, "large.txt"), "x".repeat(2048));
+  writeFileSync(join(repo, "hidden.ignored"), "ignored\n");
+  chmodSync(join(repo, "tool.sh"), 0o755);
+  unlinkSync(join(repo, "deleted.txt"));
+  writeFileSync(join(repo, "vendor/lib/lib.txt"), "library changed\n");
+  symlinkSync("a.js", join(repo, "link.js"));
+
+  const before = repositorySnapshot(repo);
+  const source = new GitSource(repo, {
+    totalPatchBytes: 64 * 1024,
+    fileBytes: 1024,
+  });
+  const firstFingerprint = (await source.status()).fingerprint;
+  const model = await source.refresh(4);
+  const after = repositorySnapshot(repo);
+  assert.deepEqual(after, before);
+
+  writeFileSync(join(repo, "a.js"), "const value = 4;\n");
+  const secondFingerprint = (await source.status()).fingerprint;
+  assert.notEqual(secondFingerprint, firstFingerprint);
+
+  const byPath = new Map(model.files.map((file) => [file.path, file]));
+  assert.ok(byPath.get("a.js").rows.some((row) => row.text.includes("value = 3")));
+  assert.equal(byPath.get("new name.txt").status, "renamed");
+  assert.equal(byPath.get("new file.py").status, "added");
+  assert.equal(byPath.get("binary.bin").kind, "binary");
+  assert.equal(byPath.get("large.txt").kind, "too-large");
+  assert.equal(byPath.get("link.js").status, "added");
+  assert.equal(byPath.get("link.js").header.some((line) => line.includes("120000")), true);
+  assert.equal(byPath.get("tool.sh").kind, "mode");
+  assert.equal(byPath.get("deleted.txt").status, "deleted");
+  assert.equal(byPath.get("vendor/lib").kind, "submodule");
+  assert.equal(byPath.has("hidden.ignored"), false);
+});
+
+test("GitSource supports an unborn repository without writing an index", async () => {
+  const repo = createRepo();
+  writeFileSync(join(repo, "first.txt"), "first\n");
+  const beforeStatus = git(repo, "status", "--porcelain=v1");
+  const model = await new GitSource(repo).refresh(1);
+  assert.equal(model.files[0].path, "first.txt");
+  assert.equal(model.files[0].status, "added");
+  assert.equal(git(repo, "status", "--porcelain=v1"), beforeStatus);
+});
