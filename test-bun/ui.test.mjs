@@ -244,6 +244,20 @@ test("j/k navigation keeps the selected row inside a long diff viewport", async 
   expect(app.captureCharFrame()).toContain("const line1 = 1;");
 });
 
+test("Ctrl+D and Ctrl+U move by half a viewport and keep selection visible", async () => {
+  const app = await setup(80, 12, undefined, longModel());
+
+  app.mockInput.pressKey("d", { ctrl: true });
+  await app.flush();
+  expect(app.controller.rowIndex).toBeGreaterThan(1);
+  expectSelectedRowVisible(app);
+
+  app.mockInput.pressKey("u", { ctrl: true });
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(0);
+  expectSelectedRowVisible(app);
+});
+
 describe("Tree-sitter packaged assets", () => {
   test("all required grammars load offline and produce syntax spans", async () => {
     const highlighter = await createHighlighter();

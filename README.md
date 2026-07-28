@@ -117,6 +117,7 @@ The review pane uses this stable key contract:
 | Keys | Action |
 | --- | --- |
 | arrows or `j` / `k` | Previous/next diff row |
+| `Ctrl+U` / `Ctrl+D` | Move up/down by half a visible page |
 | `[` / `]` | Previous/next separated change block |
 | `{` / `}` | Previous/next file |
 | `b` | Show/hide the file sidebar |

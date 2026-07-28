@@ -107,9 +107,10 @@ Fix only problems introduced by this setup. An attached client may need
 
 1. Focus a detected coding agent in a Git repository.
 2. Press `F6` to open the native working-tree review.
-3. Navigate with `j`/`k`, `[`/`]`, and `{`/`}`; toggle the file sidebar with
-   `b` or drag its divider to resize it. Letter and bracket shortcuts also
-   work from a Russian keyboard layout.
+3. Navigate with `j`/`k`, use `Ctrl+U`/`Ctrl+D` for half-page movement, and
+   switch change blocks or files with `[`/`]` and `{`/`}`; toggle the file
+   sidebar with `b` or drag its divider to resize it. Letter and bracket
+   shortcuts also work from a Russian keyboard layout.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
 5. Press `F6` to hide/restore the same live pane.
 6. Press `F7` to insert validated saved comments into the exact source agent.

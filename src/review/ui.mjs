@@ -228,6 +228,12 @@ export class ReviewUI {
         this.render();
         return;
       }
+      if (key.ctrl && (name === "u" || name === "d")) {
+        key.preventDefault();
+        this.moveHalfPage(name === "u" ? -1 : 1);
+        this.render();
+        return;
+      }
       const action =
         name === "up" || name === "k"
           ? () => this.controller.moveRow(-1)
@@ -282,6 +288,11 @@ export class ReviewUI {
       }
       this.render();
     });
+  }
+
+  moveHalfPage(direction) {
+    const visibleRows = Math.max(1, this.diff.viewport.height);
+    this.controller.moveRow(direction * Math.max(1, Math.floor(visibleRows / 2)));
   }
 
   confirmDelete() {
@@ -636,7 +647,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "help",
-          `↑/k ↓/j rows · [ ] change blocks · { } files · b sidebar · v range · s context target · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ?/F1 help · Esc cancel · mouse click/Shift-click/drag`,
+          `↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files · b sidebar · v range · s context target · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ?/F1 help · Esc cancel · mouse click/Shift-click/drag`,
           { height: 2 },
         ),
       );

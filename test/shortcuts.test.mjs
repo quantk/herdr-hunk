@@ -23,6 +23,8 @@ test("shortcut names fall back to Russian QWERTY aliases", () => {
   assert.equal(shortcutName(key("л")), "k");
   assert.equal(shortcutName(key("с")), "c");
   assert.equal(shortcutName(key("ы", { ctrl: true })), "s");
+  assert.equal(shortcutName(key("в", { ctrl: true })), "d");
+  assert.equal(shortcutName(key("г", { ctrl: true })), "u");
   assert.equal(shortcutName(key("х")), "[");
   assert.equal(shortcutName(key("Х", { shift: true })), "{");
   assert.equal(shortcutName(key("ъ")), "]");
