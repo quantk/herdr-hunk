@@ -62,7 +62,8 @@ installation below.
 - Shows saved comment text inline beneath its anchored diff range.
 - Re-anchors comments deterministically after refresh or marks them stale
   without guessing.
-- Hides and restores the same live pane with `F6`.
+- Opens the live review in its own tab and toggles between review and agent
+  tabs with `F6`.
 - Inserts saved comments into the associated agent with `F7`, preserving
   existing input and never pressing Enter.
 - Migrates legacy human Hunk notes once, preserving an untouched `.v1.bak`.
@@ -139,9 +140,12 @@ herdr server reload-config
 ## Usage
 
 Focus a detected coding agent inside a Git repository and press `F6`. The
-native review opens beside that exact agent. Pressing `F6` again from the agent
-or review moves the live pane to a background tab; another press restores the
-same process and state.
+native review opens in a dedicated tab and Herdr switches to it immediately.
+Press `F6` from that review tab to return to the exact source agent tab. Press
+`F6` from the source agent again to switch back to the same live review
+process and state. The pane is never moved into a split or restarted while
+toggling. An already-running split review from an older release is moved once
+into its dedicated tab without restarting the pane.
 
 The review pane uses this stable key contract:
 

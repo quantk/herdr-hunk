@@ -11,7 +11,7 @@ command = ["npm", "ci", "--omit=dev"]
 [[actions]]
 id = "open-review"
 title = "Review changes"
-description = "Open a live native review beside the focused agent."
+description = "Open a live native review in a dedicated tab and toggle back to the focused agent."
 contexts = ["pane"]
 command = ["node", "src/open-review.mjs"]
 
