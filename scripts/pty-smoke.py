@@ -71,6 +71,7 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
             "TERM": os.environ.get("TERM", "xterm-256color"),
             "HERDR_HUNK_REPO": str(repository),
             "HERDR_HUNK_REVIEW_KEY": f"pty-{stop_signal.name.lower()}",
+            "HERDR_HUNK_AGENT_PANE": "w1:p1",
             "HERDR_PLUGIN_STATE_DIR": str(state),
         }
         pid, master = pty.fork()
@@ -89,9 +90,9 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
         )
         output = bytearray()
         deadline = time.monotonic() + 12
-        while b"unified diff" not in output and time.monotonic() < deadline:
+        while b"1 working tree" not in output and time.monotonic() < deadline:
             read_available(master, output, 0.1)
-        if b"unified diff" not in output:
+        if b"1 working tree" not in output:
             os.killpg(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
             raise AssertionError(
