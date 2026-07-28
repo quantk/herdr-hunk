@@ -38,8 +38,16 @@ def prepare_test_process() -> None:
     )
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
-    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-    os.tcsetpgrp(0, os.getpgrp())
+
+
+def wait_for_exit(pid: int, timeout: float) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        waited, status = os.waitpid(pid, os.WNOHANG)
+        if waited == pid:
+            return os.waitstatus_to_exitcode(status)
+        time.sleep(0.01)
+    raise TimeoutError
 
 
 def run_signal_case(stop_signal: signal.Signals) -> None:
@@ -58,12 +66,6 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
             encoding="utf8",
         )
 
-        master, slave = pty.openpty()
-        fcntl.ioctl(
-            slave,
-            termios.TIOCSWINSZ,
-            struct.pack("HHHH", 24, 100, 0, 0),
-        )
         environment = {
             **os.environ,
             "TERM": os.environ.get("TERM", "xterm-256color"),
@@ -71,23 +73,27 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
             "HERDR_HUNK_REVIEW_KEY": f"pty-{stop_signal.name.lower()}",
             "HERDR_PLUGIN_STATE_DIR": str(state),
         }
-        process = subprocess.Popen(
-            [BUN, str(ROOT / "src/review-pane.mjs")],
-            cwd=ROOT,
-            env=environment,
-            stdin=slave,
-            stdout=slave,
-            stderr=slave,
-            start_new_session=True,
-            preexec_fn=prepare_test_process,
+        pid, master = pty.fork()
+        if pid == 0:
+            prepare_test_process()
+            os.chdir(ROOT)
+            os.execve(
+                BUN,
+                [BUN, str(ROOT / "src/review-pane.mjs")],
+                environment,
+            )
+        fcntl.ioctl(
+            master,
+            termios.TIOCSWINSZ,
+            struct.pack("HHHH", 24, 100, 0, 0),
         )
-        os.close(slave)
         output = bytearray()
         deadline = time.monotonic() + 12
         while b"unified diff" not in output and time.monotonic() < deadline:
             read_available(master, output, 0.1)
         if b"unified diff" not in output:
-            os.killpg(process.pid, signal.SIGKILL)
+            os.killpg(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
             raise AssertionError(
                 f"review pane did not render before {stop_signal.name}: "
                 + output[-1000:].decode("utf8", "replace")
@@ -96,11 +102,12 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
         if stop_signal == signal.SIGINT:
             os.write(master, b"\x03")
         else:
-            os.killpg(process.pid, stop_signal)
+            os.killpg(pid, stop_signal)
         try:
-            exit_code = process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
+            exit_code = wait_for_exit(pid, 10)
+        except TimeoutError:
+            os.killpg(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
             raise AssertionError(
                 f"review pane did not exit after {stop_signal.name}"
             )
