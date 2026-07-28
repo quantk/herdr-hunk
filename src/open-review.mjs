@@ -28,17 +28,51 @@ function getPane(herdr, paneId) {
   return parseCommandJson(result.stdout, "herdr pane get")?.result?.pane;
 }
 
-function runPaneMove(herdr, args) {
-  const moved = spawnSync(herdr, ["pane", "move", ...args], {
+function focusTab(herdr, tabId) {
+  const focused = spawnSync(herdr, ["tab", "focus", tabId], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+  if (focused.status !== 0) {
+    throw new Error(describeCommandFailure("herdr tab focus", focused));
+  }
+}
+
+function renameTab(herdr, tabId) {
+  const renamed = spawnSync(herdr, ["tab", "rename", tabId, "Review"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (renamed.status !== 0) {
+    throw new Error(describeCommandFailure("herdr tab rename", renamed));
+  }
+}
+
+function moveReviewToDedicatedTab(herdr, reviewPaneId, workspaceId) {
+  const moved = spawnSync(
+    herdr,
+    [
+      "pane",
+      "move",
+      reviewPaneId,
+      "--new-tab",
+      "--workspace",
+      workspaceId,
+      "--label",
+      "Review",
+      "--focus",
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   if (moved.status !== 0) {
     throw new Error(describeCommandFailure("herdr pane move", moved));
   }
 }
 
-function toggleExistingReview(herdr, review) {
+function toggleExistingReview(herdr, review, focusedPaneId) {
   const reviewPane = getPane(herdr, review.reviewPaneId);
   const agentPane = getPane(herdr, review.agentPaneId);
   if (!reviewPane || !agentPane) {
@@ -46,31 +80,34 @@ function toggleExistingReview(herdr, review) {
   }
 
   if (reviewPane.tab_id === agentPane.tab_id) {
-    runPaneMove(herdr, [
+    const workspaceId = agentPane.workspace_id ?? reviewPane.workspace_id;
+    if (!workspaceId) {
+      throw new Error("Herdr did not provide the review workspace.");
+    }
+    moveReviewToDedicatedTab(
+      herdr,
       review.reviewPaneId,
-      "--new-tab",
-      "--workspace",
-      agentPane.workspace_id,
-      "--label",
-      "Review",
-      "--no-focus",
-    ]);
+      workspaceId,
+    );
     process.stdout.write(
-      `Hid the review for ${review.repo} without closing its session.\n`,
+      `Moved the existing review for ${review.repo} into its dedicated tab.\n`,
+    );
+    return true;
+  }
+
+  renameTab(herdr, reviewPane.tab_id);
+  const focusedPane = focusedPaneId
+    ? getPane(herdr, focusedPaneId)
+    : undefined;
+  if (focusedPane?.tab_id === reviewPane.tab_id) {
+    focusTab(herdr, agentPane.tab_id);
+    process.stdout.write(
+      `Returned to ${review.agentKind ?? "agent"} (${review.agentPaneId}) for ${review.repo}.\n`,
     );
   } else {
-    runPaneMove(herdr, [
-      review.reviewPaneId,
-      "--tab",
-      agentPane.tab_id,
-      "--split",
-      "right",
-      "--target-pane",
-      review.agentPaneId,
-      "--focus",
-    ]);
+    focusTab(herdr, reviewPane.tab_id);
     process.stdout.write(
-      `Restored the review for ${review.repo} beside ${review.agentKind ?? "agent"} (${review.agentPaneId}).\n`,
+      `Switched to the review tab for ${review.repo}.\n`,
     );
   }
   return true;
@@ -85,7 +122,10 @@ function main() {
   const focusedReview = state.reviews.find(
     (review) => review.reviewPaneId === context.focused_pane_id,
   );
-  if (focusedReview && toggleExistingReview(herdr, focusedReview)) {
+  if (
+    focusedReview &&
+    toggleExistingReview(herdr, focusedReview, context.focused_pane_id)
+  ) {
     return;
   }
 
@@ -115,11 +155,19 @@ function main() {
   }
   if (
     activeMatches.length === 1 &&
-    toggleExistingReview(herdr, activeMatches[0])
+    toggleExistingReview(herdr, activeMatches[0], context.focused_pane_id)
   ) {
     return;
   }
 
+  const agentPane = getPane(herdr, agentPaneId);
+  if (!agentPane) {
+    throw new Error("The focused agent pane is no longer active.");
+  }
+  const workspaceId = agentPane.workspace_id ?? context.workspace_id;
+  if (!workspaceId) {
+    throw new Error("Herdr did not provide the agent workspace.");
+  }
   const reviewKey =
     matchingReviews.length === 1
       ? matchingReviews[0].reviewKey
@@ -133,11 +181,9 @@ function main() {
     "--entrypoint",
     "review",
     "--placement",
-    "split",
-    "--target-pane",
-    agentPaneId,
-    "--direction",
-    "right",
+    "tab",
+    "--workspace",
+    workspaceId,
     "--env",
     `HERDR_HUNK_REVIEW_KEY=${reviewKey}`,
     "--env",
@@ -173,8 +219,15 @@ function main() {
     }),
   );
 
+  const reviewTabId =
+    pane.tab_id ?? getPane(herdr, pane.pane_id)?.tab_id;
+  if (!reviewTabId) {
+    throw new Error("Herdr opened the review but did not return its tab ID.");
+  }
+  renameTab(herdr, reviewTabId);
+
   process.stdout.write(
-    `Opened a review for ${repo} beside ${context.focused_pane_agent} (${agentPaneId}).\n`,
+    `Opened a review tab for ${repo} and switched to it.\n`,
   );
 }
 

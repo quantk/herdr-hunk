@@ -169,6 +169,8 @@ export class ReviewUI {
     this.selectedDetachedNoteId = null;
     this.diffNavigation = [];
     this.pendingG = false;
+    this.renderQueued = false;
+    this.renderPromise = null;
 
     this.root = new BoxRenderable(this.ctx, {
       id: "review-root",
@@ -527,6 +529,23 @@ export class ReviewUI {
   }
 
   async render() {
+    this.renderQueued = true;
+    if (this.renderPromise) return this.renderPromise;
+    this.renderPromise = (async () => {
+      while (this.renderQueued) {
+        this.renderQueued = false;
+        await this.renderPass();
+      }
+    })();
+    try {
+      await this.renderPromise;
+    } finally {
+      this.renderPromise = null;
+    }
+    if (this.renderQueued) return this.render();
+  }
+
+  async renderPass() {
     const version = ++this.renderVersion;
     const narrow = this.renderer.terminalWidth < 72;
     const sidebarVisible =

@@ -36,24 +36,31 @@ appendFileSync(root + "/commands.jsonl", JSON.stringify(args) + "\\n");
 const paneStatePath = root + "/pane-state.json";
 const paneState = existsSync(paneStatePath)
   ? JSON.parse(readFileSync(paneStatePath, "utf8"))
-  : { reviewTab: "tab-main" };
+  : { reviewTab: "tab-review", focusedTab: "tab-main" };
 const reply = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 if (args[0] === "pane" && args[1] === "get") {
   const id = args[2];
   if (id === "w1:p1") reply({ result: { pane: { pane_id: id, tab_id: "tab-main", workspace_id: "w1" } } });
   else if (id === "w1:p2") reply({ result: { pane: { pane_id: id, tab_id: paneState.reviewTab, workspace_id: "w1" } } });
   else process.exitCode = 1;
-} else if (args[0] === "pane" && args[1] === "move") {
-  paneState.reviewTab = args.includes("--new-tab")
-    ? "tab-background"
-    : args[args.indexOf("--tab") + 1];
+} else if (args[0] === "tab" && args[1] === "focus") {
+  paneState.focusedTab = args[2];
   writeFileSync(paneStatePath, JSON.stringify(paneState));
-  reply({ result: { move_result: { pane: { pane_id: "w1:p2" } } } });
+  reply({ result: { tab: { tab_id: args[2], focused: true } } });
+} else if (args[0] === "tab" && args[1] === "rename") {
+  paneState.reviewLabel = args.slice(3).join(" ");
+  writeFileSync(paneStatePath, JSON.stringify(paneState));
+  reply({ result: { tab: { tab_id: args[2], label: paneState.reviewLabel } } });
+} else if (args[0] === "pane" && args[1] === "move" && args.includes("--new-tab")) {
+  paneState.reviewTab = "tab-review";
+  if (args.includes("--focus")) paneState.focusedTab = "tab-review";
+  writeFileSync(paneStatePath, JSON.stringify(paneState));
+  reply({ result: { move_result: { pane: { pane_id: args[2], tab_id: "tab-review" } } } });
 } else if (args[0] === "pane" && args[1] === "list") {
   reply({ result: { panes: [{ pane_id: "w1:p1" }, { pane_id: "w1:p2" }] } });
 } else if (args[0] === "plugin" && args[1] === "pane" && args[2] === "open") {
-  writeFileSync(paneStatePath, JSON.stringify({ reviewTab: "tab-main" }));
-  reply({ result: { plugin_pane: { pane: { pane_id: "w1:p2", workspace_id: "w1" } } } });
+  writeFileSync(paneStatePath, JSON.stringify({ reviewTab: "tab-review", focusedTab: "tab-review" }));
+  reply({ result: { plugin_pane: { pane: { pane_id: "w1:p2", tab_id: "tab-review", workspace_id: "w1" } } } });
 } else if (args[0] === "agent" && args[1] === "focus") {
   reply({ result: { pane_id: args[2] } });
 } else if (args[0] === "notification" && args[1] === "show") {
@@ -86,32 +93,36 @@ function actionEnv({ repo, stateDir, fakeHerdr, fakeData, socketPath, context })
   };
 }
 
-test("F6 opens, hides, and restores the same native pane without a close or Hunk command", () => {
+test("F6 opens a dedicated review tab and toggles focus without moving or closing its pane", () => {
   const root = mkdtempSync(join(tmpdir(), "herdr-actions-f6-"));
   const repo = join(root, "repo");
   const stateDir = join(root, "state");
   mkdirSync(repo);
   spawnSync("git", ["init", "-q", repo]);
   const fakeHerdr = createFakeHerdr(root);
-  const env = actionEnv({
-    repo,
-    stateDir,
-    fakeHerdr,
-    fakeData: root,
-    context: {
-      focused_pane_id: "w1:p1",
-      focused_pane_agent: "codex",
-    },
-  });
-
-  for (let count = 0; count < 3; count += 1) {
+  const runAction = (context) => {
     const result = spawnSync(process.execPath, ["src/open-review.mjs"], {
       cwd: process.cwd(),
-      env,
+      env: actionEnv({
+        repo,
+        stateDir,
+        fakeHerdr,
+        fakeData: root,
+        context,
+      }),
       encoding: "utf8",
     });
     assert.equal(result.status, 0, result.stderr);
-  }
+  };
+  runAction({
+    focused_pane_id: "w1:p1",
+    focused_pane_agent: "codex",
+  });
+  runAction({ focused_pane_id: "w1:p2" });
+  runAction({
+    focused_pane_id: "w1:p1",
+    focused_pane_agent: "codex",
+  });
 
   const state = readState(stateDir);
   assert.equal(state.reviews.length, 1);
@@ -125,11 +136,103 @@ test("F6 opens, hides, and restores the same native pane without a close or Hunk
     1,
   );
   assert.equal(
-    commands.filter((args) => args.slice(0, 2).join(" ") === "pane move").length,
+    commands.filter((args) => args.slice(0, 2).join(" ") === "tab focus").length,
     2,
+  );
+  const open = commands.find(
+    (args) => args.slice(0, 3).join(" ") === "plugin pane open",
+  );
+  assert.equal(open[open.indexOf("--placement") + 1], "tab");
+  assert.equal(open[open.indexOf("--workspace") + 1], "w1");
+  assert.equal(open.includes("--target-pane"), false);
+  assert.equal(
+    commands.some((args) => args.slice(0, 2).join(" ") === "pane move"),
+    false,
   );
   assert.equal(commands.some((args) => args.includes("close")), false);
   assert.equal(commands.some((args) => args[0] === "hunk"), false);
+  assert.deepEqual(
+    commands
+      .filter((args) => args.slice(0, 2).join(" ") === "tab focus")
+      .map((args) => args[2]),
+    ["tab-main", "tab-review"],
+  );
+  assert.deepEqual(
+    commands
+      .filter((args) => args.slice(0, 2).join(" ") === "tab rename")
+      .map((args) => args.slice(2)),
+    [
+      ["tab-review", "Review"],
+      ["tab-review", "Review"],
+      ["tab-review", "Review"],
+    ],
+  );
+});
+
+test("F6 migrates an existing split review into a dedicated tab without restarting it", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr-actions-f6-migrate-"));
+  const repo = join(root, "repo");
+  const stateDir = join(root, "state");
+  mkdirSync(repo);
+  spawnSync("git", ["init", "-q", repo]);
+  const fakeHerdr = createFakeHerdr(root);
+  writeFileSync(
+    join(root, "pane-state.json"),
+    JSON.stringify({ reviewTab: "tab-main", focusedTab: "tab-main" }),
+  );
+  writeState(
+    stateDir,
+    upsertReview(
+      { version: 1, reviews: [] },
+      {
+        reviewKey: "legacy-split",
+        repo,
+        agentPaneId: "w1:p1",
+        agentKind: "codex",
+        reviewPaneId: "w1:p2",
+        workspaceId: "w1",
+        openedAt: new Date().toISOString(),
+      },
+    ),
+  );
+
+  const result = spawnSync(process.execPath, ["src/open-review.mjs"], {
+    cwd: process.cwd(),
+    env: actionEnv({
+      repo,
+      stateDir,
+      fakeHerdr,
+      fakeData: root,
+      context: {
+        focused_pane_id: "w1:p1",
+        focused_pane_agent: "codex",
+      },
+    }),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+
+  const commands = readFileSync(join(root, "commands.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  const move = commands.find(
+    (args) => args.slice(0, 2).join(" ") === "pane move",
+  );
+  assert.ok(move);
+  assert.equal(move.includes("--new-tab"), true);
+  assert.equal(move.includes("--focus"), true);
+  assert.equal(move[move.indexOf("--label") + 1], "Review");
+  assert.equal(
+    commands.some(
+      (args) => args.slice(0, 3).join(" ") === "plugin pane open",
+    ),
+    false,
+  );
+  assert.equal(
+    JSON.parse(readFileSync(join(root, "pane-state.json"), "utf8")).reviewTab,
+    "tab-review",
+  );
 });
 
 test("F7 loads the exact native store and inserts one unsubmitted human-only draft", async () => {

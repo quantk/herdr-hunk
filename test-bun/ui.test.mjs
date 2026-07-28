@@ -222,6 +222,36 @@ test("sidebar toggles without losing selection and file rows are not text-select
   );
 });
 
+test("concurrent resize renders are serialized and coalesced", async () => {
+  let measuring = false;
+  let active = 0;
+  let maxActive = 0;
+  let calls = 0;
+  const highlighter = {
+    highlight: async (value) => {
+      if (!measuring) return value;
+      calls += 1;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await Bun.sleep(5);
+      active -= 1;
+      return value;
+    },
+  };
+  const app = await setup(100, 24, highlighter);
+  measuring = true;
+
+  await Promise.all([
+    app.ui.render(),
+    app.ui.render(),
+    app.ui.render(),
+  ]);
+  await app.flush();
+
+  expect(maxActive).toBe(1);
+  expect(calls).toBe(app.controller.file.rows.length * 2);
+});
+
 test("scope switching isolates comments and persists the active scope", async () => {
   const app = await setup();
 

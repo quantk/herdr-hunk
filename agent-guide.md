@@ -127,7 +127,7 @@ Fix only problems introduced by this setup. An attached client may need
 ## 5. Explain the workflow
 
 1. Focus a detected coding agent in a Git repository.
-2. Press `F6` to open the native review.
+2. Press `F6` to open the native review in a dedicated tab and switch to it.
 3. Choose `1` for current uncommitted work, `2` for everything since the
    branch diverged from its local main/master base, or `3` for the latest
    file-changing turn observed from this exact agent. Navigate with `j`/`k`,
@@ -137,7 +137,8 @@ Fix only problems introduced by this setup. An attached client may need
    divider to resize it, and toggle long-row wrapping with `w`. Letter and
    bracket shortcuts also work from a Russian keyboard layout.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
-5. Press `F6` to hide/restore the same live pane.
+5. Press `F6` from the review tab to return to the source agent tab; press it
+   from the source agent to switch back to the same live review tab.
 6. Press `F7` to insert open validated saved comments into the exact source
    agent.
 7. Review or edit the draft, then press Enter manually.
@@ -158,9 +159,11 @@ idle-to-working transition and freezes when that turn finishes. Press `?` or
 `F1` inside the pane for the full keyboard/mouse reference. `s` chooses the
 old/new target only for unchanged context lines; additions are always new and
 deletions are always old.
-`Ctrl+C` closes the review pane cleanly; `F6` can reopen it with saved
-comments, resolution state, active scope, sidebar visibility, sidebar width,
-and row-wrap preference intact.
+`Ctrl+C` closes the review pane cleanly. Normal `F6` tab switching does not
+move, close, or restart the pane, so saved comments, resolution state, active
+scope, sidebar visibility, sidebar width, and row-wrap preference stay intact.
+An existing split review from an older release is moved into a dedicated tab
+once, without restarting it.
 
 ## 6. Report
 
