@@ -12,7 +12,11 @@ import { shortcutName } from "./shortcuts.mjs";
 const COLORS = {
   selected: "#30384a",
   addition: "#98c379",
+  additionBackground: "#173c2a",
+  selectedAdditionBackground: "#28513b",
   deletion: "#e06c75",
+  deletionBackground: "#44242a",
+  selectedDeletionBackground: "#5a3038",
   context: "#abb2bf",
   muted: "#7f848e",
   warning: "#e5c07b",
@@ -91,6 +95,20 @@ function commentTarget(controller) {
   return `target:${side}:${line}`;
 }
 
+function rowBackground(row, selected) {
+  if (row.kind === "addition") {
+    return selected
+      ? COLORS.selectedAdditionBackground
+      : COLORS.additionBackground;
+  }
+  if (row.kind === "deletion") {
+    return selected
+      ? COLORS.selectedDeletionBackground
+      : COLORS.deletionBackground;
+  }
+  return selected ? COLORS.selected : undefined;
+}
+
 export class ReviewUI {
   constructor(renderer, controller, highlighter) {
     this.renderer = renderer;
@@ -102,6 +120,7 @@ export class ReviewUI {
     this.notesIndex = 0;
     this.deleteCandidate = null;
     this.renderVersion = 0;
+    this.scrollFrameHandler = null;
     this.resizingSidebar = false;
 
     this.root = new BoxRenderable(this.ctx, {
@@ -343,7 +362,26 @@ export class ReviewUI {
     this.renderFiles();
     await this.renderDiff(version);
     this.renderBottom();
+    this.scrollSelectedRowAfterLayout(version);
     this.renderer.requestRender();
+  }
+
+  scrollSelectedRowAfterLayout(version) {
+    const selectedId = this.controller.row?.id;
+    if (!selectedId) return;
+    if (this.scrollFrameHandler) {
+      this.renderer.off(CliRenderEvents.FRAME, this.scrollFrameHandler);
+    }
+    const handler = () => {
+      if (this.scrollFrameHandler === handler) {
+        this.scrollFrameHandler = null;
+      }
+      if (version !== this.renderVersion) return;
+      this.diff.scrollChildIntoView(`row:${selectedId}`);
+      this.renderer.requestRender();
+    };
+    this.scrollFrameHandler = handler;
+    this.renderer.once(CliRenderEvents.FRAME, handler);
   }
 
   clampedSidebarWidth() {
@@ -481,7 +519,7 @@ export class ReviewUI {
           id: `row:${row.id}`,
           height: 1,
           flexDirection: "row",
-          backgroundColor: selected ? COLORS.selected : undefined,
+          backgroundColor: rowBackground(row, selected),
           onMouseDown: (event) => {
             if (event.modifiers.shift && this.controller.rangeStart == null) {
               this.controller.rangeStart = this.controller.rowIndex;
@@ -558,8 +596,6 @@ export class ReviewUI {
         }
       }
     }
-    const selectedId = this.controller.row?.id;
-    if (selectedId) this.diff.scrollChildIntoView(`row:${selectedId}`);
   }
 
   renderBottom() {

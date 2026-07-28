@@ -30,19 +30,40 @@ function testModel() {
   );
 }
 
-async function setup(width = 100, height = 24, highlighterOverride) {
+function longModel(lineCount = 40) {
+  return parseUnifiedDiff(
+    [
+      "diff --git a/src/long.js b/src/long.js",
+      "--- a/src/long.js",
+      "+++ b/src/long.js",
+      `@@ -0,0 +1,${lineCount} @@`,
+      ...Array.from(
+        { length: lineCount },
+        (_, index) => `+const line${index + 1} = ${index + 1};`,
+      ),
+    ].join("\n"),
+    { generation: 1 },
+  );
+}
+
+async function setup(
+  width = 100,
+  height = 24,
+  highlighterOverride,
+  modelOverride = testModel(),
+) {
   const testRenderer = await createTestRenderer({ width, height });
   const stateDir = mkdtempSync(join(tmpdir(), "herdr-ui-"));
   const source = {
     status: async () => ({ fingerprint: "next", entries: [] }),
-    refresh: async () => testModel(),
+    refresh: async () => modelOverride,
   };
   const controller = new ReviewController({
     source,
     stateDir,
     store: emptyStore("review-ui", "/repo"),
   });
-  controller.model = testModel();
+  controller.model = modelOverride;
   controller.status = "Ready.";
   const highlighter =
     highlighterOverride ?? { highlight: async (value) => value };
@@ -52,6 +73,39 @@ async function setup(width = 100, height = 24, highlighterOverride) {
   cleanups.push(async () => testRenderer.renderer.destroy());
   return { ...testRenderer, controller, ui };
 }
+
+function expectSelectedRowVisible(app) {
+  const selected = app.ui.diff.content.findDescendantById(
+    `row:${app.controller.row.id}`,
+  );
+  expect(selected).toBeDefined();
+  expect(selected.y).toBeGreaterThanOrEqual(app.ui.diff.viewport.y);
+  expect(selected.y + selected.height).toBeLessThanOrEqual(
+    app.ui.diff.viewport.y + app.ui.diff.viewport.height,
+  );
+}
+
+test("addition and deletion rows use distinct full-row backgrounds", async () => {
+  const app = await setup();
+  const addition = app.controller.file.rows.find(
+    (row) => row.kind === "addition",
+  );
+  const deletion = app.controller.file.rows.find(
+    (row) => row.kind === "deletion",
+  );
+  const additionRow = app.ui.diff.content.findDescendantById(
+    `row:${addition.id}`,
+  );
+  const deletionRow = app.ui.diff.content.findDescendantById(
+    `row:${deletion.id}`,
+  );
+
+  expect(additionRow.backgroundColor).toBeDefined();
+  expect(deletionRow.backgroundColor).toBeDefined();
+  expect(additionRow.backgroundColor).not.toEqual(deletionRow.backgroundColor);
+  expect(additionRow.width).toBe(app.ui.diff.viewport.width);
+  expect(deletionRow.width).toBe(app.ui.diff.viewport.width);
+});
 
 test("keyboard navigation, multiline paste, save, cancel, and resize preserve state", async () => {
   const app = await setup();
@@ -172,6 +226,22 @@ test("mouse row selection and range drag map to model row indexes", async () => 
   await app.flush();
   expect(app.controller.rangeStart).toBe(start);
   expect(app.controller.rowIndex).toBeGreaterThanOrEqual(start);
+});
+
+test("j/k navigation keeps the selected row inside a long diff viewport", async () => {
+  const app = await setup(80, 12, undefined, longModel());
+
+  await app.mockInput.pressKeys(Array(35).fill("j"));
+  await app.waitFor(() => app.controller.rowIndex === 35);
+  await app.flush();
+  expect(app.ui.diff.scrollTop).toBeGreaterThan(0);
+  expectSelectedRowVisible(app);
+
+  await app.mockInput.pressKeys(Array(35).fill("k"));
+  await app.waitFor(() => app.controller.rowIndex === 0);
+  await app.flush();
+  expectSelectedRowVisible(app);
+  expect(app.captureCharFrame()).toContain("const line1 = 1;");
 });
 
 describe("Tree-sitter packaged assets", () => {
