@@ -277,19 +277,26 @@ export class ReviewUI {
                             ? () => this.confirmDelete()
                             : name === "b"
                               ? () => this.controller.toggleSidebar(defaultSidebarVisible)
-                            : name === "n"
-                              ? () => {
-                                  this.showNotes = !this.showNotes;
-                                }
-                              : name === "r"
-                                ? () => this.controller.refresh({ force: true })
-                              : name === "?" || name === "f1"
+                              : name === "w"
                                 ? () => {
-                                    this.showHelp = !this.showHelp;
+                                    this.controller.toggleRowWrap();
+                                    if (this.controller.rowWrap) {
+                                      this.diff.scrollLeft = 0;
+                                    }
                                   }
-                                : name === "escape"
-                                  ? () => this.escape()
-                                  : null;
+                                : name === "n"
+                                  ? () => {
+                                      this.showNotes = !this.showNotes;
+                                    }
+                                  : name === "r"
+                                    ? () => this.controller.refresh({ force: true })
+                                    : name === "?" || name === "f1"
+                                      ? () => {
+                                          this.showHelp = !this.showHelp;
+                                        }
+                                      : name === "escape"
+                                        ? () => this.escape()
+                                        : null;
       if (!action) return;
       key.preventDefault();
       try {
@@ -372,8 +379,9 @@ export class ReviewUI {
     const sidebarVisible =
       this.controller.sidebarVisible ?? !narrow;
     const sidebarWidth = this.clampedSidebarWidth();
-    this.diff.title =
-      ` ${this.controller.source.describeScope?.() ?? this.controller.scope} `;
+    this.diff.title = ` ${
+      this.controller.source.describeScope?.() ?? this.controller.scope
+    }${this.controller.rowWrap ? " · wrap" : ""} `;
     this.files.visible = sidebarVisible;
     this.files.width = sidebarVisible ? (narrow ? "100%" : sidebarWidth) : 0;
     this.splitter.visible = sidebarVisible && !narrow;
@@ -480,6 +488,10 @@ export class ReviewUI {
 
   async renderDiff(version) {
     const file = this.controller.file;
+    const wrappedRowWidth = Math.max(
+      1,
+      this.diff.viewport.width || this.diff.width,
+    );
     if (!file) {
       this.diff.add(
         text(
@@ -550,7 +562,9 @@ export class ReviewUI {
         });
         const container = new BoxRenderable(this.ctx, {
           id: `row:${row.id}`,
-          height: 1,
+          height: this.controller.rowWrap ? "auto" : 1,
+          minHeight: 1,
+          width: this.controller.rowWrap ? wrappedRowWidth : undefined,
           flexDirection: "row",
           backgroundColor: rowBackground(row, selected),
           onMouseDown: (event) => {
@@ -596,7 +610,11 @@ export class ReviewUI {
         if (version !== this.renderVersion) return;
         container.add(
           text(this.ctx, `code:${row.id}`, highlighted, {
+            height: this.controller.rowWrap ? "auto" : 1,
+            width: this.controller.rowWrap ? 0 : undefined,
             flexGrow: 1,
+            flexShrink: this.controller.rowWrap ? 1 : 0,
+            wrapMode: this.controller.rowWrap ? "char" : "none",
             fg:
               row.kind === "addition"
                 ? COLORS.addition
@@ -669,7 +687,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "help",
-          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · v range · s context target · c comment · e edit · n notes · d d delete · r refresh · Esc cancel`,
+          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · w row wrap · v range · s context target · c comment · e edit · n notes · d d delete · r refresh · Esc cancel`,
           { height: 2 },
         ),
       );
@@ -696,7 +714,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "status-text",
-          `${this.controller.status}  ${commentTarget(this.controller)} · b sidebar · ?/F1 help · r refresh · c comment · n notes`,
+          `${this.controller.status}  ${commentTarget(this.controller)} · b sidebar · w wrap · ?/F1 help · r refresh · c comment · n notes`,
           { fg: this.controller.status.startsWith("Refresh failed") ? COLORS.warning : COLORS.context },
         ),
       );

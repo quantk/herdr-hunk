@@ -6,7 +6,7 @@ import { createTestRenderer } from "@opentui/core/testing";
 import { ReviewController } from "../src/review/controller.mjs";
 import { createHighlighter } from "../src/review/highlighting.mjs";
 import { parseUnifiedDiff } from "../src/review/parse-diff.mjs";
-import { emptyStore } from "../src/review/store.mjs";
+import { emptyStore, readStore } from "../src/review/store.mjs";
 import { ReviewUI } from "../src/review/ui.mjs";
 
 const cleanups = [];
@@ -46,6 +46,19 @@ function longModel(lineCount = 40) {
   );
 }
 
+function longRowModel() {
+  return parseUnifiedDiff(
+    [
+      "diff --git a/src/wrap.js b/src/wrap.js",
+      "--- a/src/wrap.js",
+      "+++ b/src/wrap.js",
+      "@@ -0,0 +1 @@",
+      `+const wrapped = "${"long-content-".repeat(12)}";`,
+    ].join("\n"),
+    { generation: 1 },
+  );
+}
+
 async function setup(
   width = 100,
   height = 24,
@@ -71,7 +84,7 @@ async function setup(
   await ui.render();
   await testRenderer.flush();
   cleanups.push(async () => testRenderer.renderer.destroy());
-  return { ...testRenderer, controller, ui };
+  return { ...testRenderer, controller, stateDir, ui };
 }
 
 function expectSelectedRowVisible(app) {
@@ -290,6 +303,34 @@ test("Ctrl+D and Ctrl+U move by half a viewport and keep selection visible", asy
   await app.flush();
   expect(app.controller.rowIndex).toBe(0);
   expectSelectedRowVisible(app);
+});
+
+test("w toggles diff row wrapping and persists the preference", async () => {
+  const app = await setup(70, 16, undefined, longRowModel());
+  const rowId = app.controller.row.id;
+  let row = app.ui.diff.content.findDescendantById(`row:${rowId}`);
+  expect(row.height).toBe(1);
+  expect(app.controller.store.ui.rowWrap).toBe(false);
+
+  app.mockInput.pressKey("w");
+  await app.flush();
+  row = app.ui.diff.content.findDescendantById(`row:${rowId}`);
+  expect(app.controller.rowWrap).toBe(true);
+  expect(app.controller.store.ui.rowWrap).toBe(true);
+  expect(readStore(app.stateDir, "review-ui", "/repo").ui.rowWrap).toBe(true);
+  expect(row.height).toBeGreaterThan(1);
+  expect(row.width).toBeGreaterThanOrEqual(app.ui.diff.viewport.width - 1);
+  const code = row.findDescendantById(`code:${rowId}`);
+  expect(code.width).toBeGreaterThan(1);
+  expect(code.virtualLineCount).toBeGreaterThan(1);
+  expect(app.ui.diff.title).toContain("wrap");
+
+  app.mockInput.pressKey("ц");
+  await app.flush();
+  row = app.ui.diff.content.findDescendantById(`row:${rowId}`);
+  expect(app.controller.rowWrap).toBe(false);
+  expect(app.controller.store.ui.rowWrap).toBe(false);
+  expect(row.height).toBe(1);
 });
 
 describe("Tree-sitter packaged assets", () => {
