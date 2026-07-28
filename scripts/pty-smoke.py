@@ -31,9 +31,11 @@ def read_available(master: int, output: bytearray, timeout: float) -> None:
         pass
 
 
-def reset_test_signals() -> None:
+def prepare_test_process() -> None:
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    os.tcsetpgrp(0, os.getpgrp())
 
 
 def run_signal_case(stop_signal: signal.Signals) -> None:
@@ -73,7 +75,7 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
             stdout=slave,
             stderr=slave,
             start_new_session=True,
-            preexec_fn=reset_test_signals,
+            preexec_fn=prepare_test_process,
         )
         os.close(slave)
         output = bytearray()
