@@ -92,11 +92,12 @@ async function main() {
   const notes = store.notes.filter(
     (note) =>
       note.provenance === "human" &&
+      note.resolvedAt == null &&
       noteMatchesScope(note, scope, scopeBase),
   );
   if (notes.length === 0) {
     throw new Error(
-      `The active ${scopeLabel(scope)} review has no saved human notes. Add and save a comment, then try again.`,
+      `The active ${scopeLabel(scope)} review has no open saved human notes. Add, reopen, or save a comment, then try again.`,
     );
   }
   const prompt = buildAgentPrompt(

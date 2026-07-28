@@ -59,6 +59,21 @@ function longRowModel() {
   );
 }
 
+function revisedValueModel() {
+  return parseUnifiedDiff(
+    [
+      "diff --git a/src/a.js b/src/a.js",
+      "--- a/src/a.js",
+      "+++ b/src/a.js",
+      "@@ -1,2 +1,2 @@",
+      " const before = true;",
+      "-const value = 2;",
+      "+const value = 3;",
+    ].join("\n"),
+    { generation: 2 },
+  );
+}
+
 async function setup(
   width = 100,
   height = 24,
@@ -138,7 +153,7 @@ test("keyboard navigation, multiline paste, save, cancel, and resize preserve st
   await app.flush();
   expect(app.controller.store.notes).toHaveLength(1);
   expect(app.controller.store.notes[0].body).toBe("Human note\nsecond line");
-  expect(app.captureCharFrame()).toContain("saved comment");
+  expect(app.captureCharFrame()).toContain("open comment");
   expect(app.captureCharFrame()).toContain("Human note");
   expect(app.captureCharFrame()).toContain("second line");
 
@@ -239,6 +254,93 @@ test("scope switching isolates comments and persists the active scope", async ()
   expect(app.controller.notes.map((note) => note.body)).toEqual([
     "Working-tree note",
   ]);
+});
+
+test("x resolves and reopens notes while open detached notes remain visible", async () => {
+  const app = await setup();
+  app.mockInput.pressKey("c");
+  await app.waitFor(() => app.controller.editor != null);
+  await app.mockInput.typeText("Verify the fix.");
+  app.mockInput.pressKey("s", { ctrl: true });
+  await app.waitFor(() => app.controller.editor == null);
+  await app.flush();
+  const noteId = app.controller.notes[0].id;
+
+  app.mockInput.pressKey("x");
+  await app.flush();
+  expect(app.controller.store.notes[0].resolvedAt).not.toBeNull();
+  expect(app.captureCharFrame()).toContain("resolved comment");
+
+  app.mockInput.pressKey("n");
+  await app.flush();
+  expect(app.captureCharFrame()).toContain("resolved");
+  app.mockInput.pressKey("x");
+  await app.flush();
+  expect(app.controller.store.notes[0].resolvedAt).toBeNull();
+
+  app.mockInput.pressKey("n");
+  app.controller.store.notes[0].status = "stale";
+  app.controller.model = { generation: 2, files: [] };
+  await app.ui.render();
+  await app.flush();
+  expect(app.captureCharFrame()).toContain("open · detached");
+  expect(app.captureCharFrame()).toContain("Verify the fix.");
+  expect(
+    app.ui.diff.content.findDescendantById(`detached-note:${noteId}`),
+  ).toBeDefined();
+  app.mockInput.pressKey("j");
+  await app.flush();
+  expect(app.ui.selectedDetachedNoteId).toBe(noteId);
+  app.mockInput.pressKey("x");
+  await app.flush();
+  expect(app.controller.store.notes[0].resolvedAt).not.toBeNull();
+});
+
+test("a detached note follows a unique former line and participates in j/k navigation", async () => {
+  const app = await setup();
+  app.controller.rowIndex = app.controller.file.rows.findIndex(
+    (row) => row.kind === "addition" && row.text === "const value = 2;",
+  );
+  app.mockInput.pressKey("c");
+  await app.waitFor(() => app.controller.editor != null);
+  await app.mockInput.typeText("Keep this behavior.");
+  app.mockInput.pressKey("s", { ctrl: true });
+  await app.waitFor(() => app.controller.editor == null);
+  const note = app.controller.notes[0];
+  note.status = "stale";
+
+  app.controller.model = revisedValueModel();
+  app.controller.rowIndex = app.controller.file.rows.findIndex(
+    (row) => row.kind === "deletion",
+  );
+  await app.ui.render();
+  await app.flush();
+
+  const deletion = app.controller.row;
+  const deletionRow = app.ui.diff.content.findDescendantById(
+    `row:${deletion.id}`,
+  );
+  const card = app.ui.diff.content.findDescendantById(
+    `detached-note:${note.id}`,
+  );
+  expect(card).toBeDefined();
+  expect(card.y).toBe(deletionRow.y + deletionRow.height);
+  expect(
+    app.ui.diff.content.findDescendantById("detached-notes-header"),
+  ).toBeUndefined();
+
+  app.mockInput.pressKey("j");
+  await app.flush();
+  expect(app.ui.selectedDetachedNoteId).toBe(note.id);
+  expect(
+    app.ui.diff.content.findDescendantById(`detached-note:${note.id}`)
+      .backgroundColor,
+  ).toBeDefined();
+
+  app.mockInput.pressKey("k");
+  await app.flush();
+  expect(app.ui.selectedDetachedNoteId).toBeNull();
+  expect(app.controller.row.id).toBe(deletion.id);
 });
 
 test("Russian-layout shortcuts navigate and expose the context comment target", async () => {

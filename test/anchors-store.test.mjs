@@ -91,6 +91,7 @@ test("store validates human provenance and saves Unicode atomically", () => {
     0o600,
   );
   assert.match(saved.updatedAt, /^20/);
+  assert.equal(saved.notes[0].resolvedAt, null);
   assert.throws(
     () =>
       validateStore(
@@ -116,6 +117,15 @@ test("store validates human provenance and saves Unicode atomically", () => {
         repository,
       ),
     /context hash does not match/,
+  );
+  assert.throws(
+    () =>
+      validateStore(
+        { ...saved, notes: [{ ...note, resolvedAt: "not-a-date" }] },
+        reviewKey,
+        repository,
+      ),
+    /invalid resolved timestamp/,
   );
 });
 
