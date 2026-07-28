@@ -75,17 +75,17 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
         while b"unified diff" not in output and time.monotonic() < deadline:
             read_available(master, output, 0.1)
         if b"unified diff" not in output:
-            process.kill()
+            os.killpg(process.pid, signal.SIGKILL)
             raise AssertionError(
                 f"review pane did not render before {stop_signal.name}: "
                 + output[-1000:].decode("utf8", "replace")
             )
 
-        os.kill(process.pid, stop_signal)
+        os.killpg(process.pid, stop_signal)
         try:
             exit_code = process.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            process.kill()
+            os.killpg(process.pid, signal.SIGKILL)
             raise AssertionError(
                 f"review pane did not exit after {stop_signal.name}"
             )
