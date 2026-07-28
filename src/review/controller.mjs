@@ -17,6 +17,7 @@ export class ReviewController {
     this.rangeEnd = null;
     this.preferredSide = "new";
     this.sidebarVisible = store.ui?.sidebarVisible ?? null;
+    this.sidebarWidth = store.ui?.sidebarWidth ?? 30;
     this.editor = null;
     this.refreshing = false;
     this.refreshQueued = false;
@@ -68,6 +69,7 @@ export class ReviewController {
           filePath: this.file?.path ?? null,
           rowId: this.row?.id ?? null,
           sidebarVisible: this.sidebarVisible,
+          sidebarWidth: this.sidebarWidth,
         },
       };
       this.store = saveStore(this.stateDir, this.store);
@@ -118,6 +120,11 @@ export class ReviewController {
     this.persistUI();
   }
 
+  setSidebarWidth(width, { persist = false } = {}) {
+    this.sidebarWidth = Math.max(18, Math.min(80, Math.round(width)));
+    if (persist) this.persistUI();
+  }
+
   moveHunk(delta) {
     const hunks = this.file?.hunks ?? [];
     if (!hunks.length) return;
@@ -144,8 +151,25 @@ export class ReviewController {
   }
 
   toggleSide() {
+    if (!this.row?.commentable) {
+      this.status = "Select a commentable diff line before choosing a side.";
+      return false;
+    }
+    if (this.row.kind === "addition") {
+      this.status = `Added lines only exist on NEW line ${this.row.newLine}.`;
+      return false;
+    }
+    if (this.row.kind === "deletion") {
+      this.status = `Deleted lines only exist on OLD line ${this.row.oldLine}.`;
+      return false;
+    }
     this.preferredSide =
       this.preferredSide === "new" ? "old" : "new";
+    const line =
+      this.preferredSide === "old" ? this.row.oldLine : this.row.newLine;
+    this.status =
+      `Context comment target: ${this.preferredSide.toUpperCase()} line ${line}.`;
+    return true;
   }
 
   selectedRows() {
@@ -227,6 +251,7 @@ export class ReviewController {
         filePath: this.file.path,
         rowId: this.row?.id ?? null,
         sidebarVisible: this.sidebarVisible,
+        sidebarWidth: this.sidebarWidth,
       },
     });
   }

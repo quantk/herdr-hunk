@@ -6,7 +6,8 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import { detectFiletype } from "./languages.mjs";
-import { terminalSafeText } from "./model.mjs";
+import { commentSide, terminalSafeText } from "./model.mjs";
+import { shortcutName } from "./shortcuts.mjs";
 
 const COLORS = {
   border: "#5c6370",
@@ -18,6 +19,9 @@ const COLORS = {
   warning: "#e5c07b",
   accent: "#61afef",
 };
+const MIN_SIDEBAR_WIDTH = 18;
+const MAX_SIDEBAR_WIDTH = 80;
+const MIN_DIFF_WIDTH = 32;
 
 function clear(renderable) {
   for (const child of [...renderable.getChildren()]) {
@@ -80,6 +84,14 @@ function notesEndingAtRow(controller, file, row) {
   });
 }
 
+function commentTarget(controller) {
+  const row = controller.row;
+  if (!row?.commentable) return "target:none";
+  const side = commentSide(row, controller.preferredSide);
+  const line = side === "old" ? row.oldLine : row.newLine;
+  return `target:${side}:${line}`;
+}
+
 export class ReviewUI {
   constructor(renderer, controller, highlighter) {
     this.renderer = renderer;
@@ -91,12 +103,22 @@ export class ReviewUI {
     this.notesIndex = 0;
     this.deleteCandidate = null;
     this.renderVersion = 0;
+    this.resizingSidebar = false;
 
     this.root = new BoxRenderable(this.ctx, {
       id: "review-root",
       width: "100%",
       height: "100%",
       flexDirection: "column",
+      onMouseDrag: (event) => {
+        if (this.resizingSidebar) this.resizeSidebar(event.x);
+      },
+      onMouseDragEnd: (event) => {
+        if (this.resizingSidebar) this.finishSidebarResize(event.x);
+      },
+      onMouseUp: (event) => {
+        if (this.resizingSidebar) this.finishSidebarResize(event.x);
+      },
     });
     this.main = new BoxRenderable(this.ctx, {
       id: "review-main",
@@ -110,6 +132,15 @@ export class ReviewUI {
       title: " files ",
       scrollY: true,
       scrollX: false,
+    });
+    this.splitter = new BoxRenderable(this.ctx, {
+      id: "review-splitter",
+      width: 1,
+      backgroundColor: COLORS.border,
+      onMouseDown: (event) => {
+        this.resizingSidebar = true;
+        event.preventDefault();
+      },
     });
     this.diff = new ScrollBoxRenderable(this.ctx, {
       id: "review-diff",
@@ -127,6 +158,7 @@ export class ReviewUI {
       flexDirection: "column",
     });
     this.main.add(this.files);
+    this.main.add(this.splitter);
     this.main.add(this.diff);
     this.root.add(this.main);
     this.root.add(this.bottom);
@@ -140,13 +172,14 @@ export class ReviewUI {
   bindKeys() {
     this.renderer.keyInput.on("keypress", (key) => {
       if (key.eventType === "release") return;
-      if (key.ctrl && key.name === "c") return;
+      const name = shortcutName(key);
+      if (key.ctrl && name === "c") return;
       if (this.controller.editor) {
-        if (key.name === "escape") {
+        if (name === "escape") {
           key.preventDefault();
           this.controller.cancelEditor();
           this.render();
-        } else if (key.ctrl && key.name === "s") {
+        } else if (key.ctrl && name === "s") {
           key.preventDefault();
           try {
             this.controller.saveEditor(this.editor.plainText);
@@ -158,7 +191,6 @@ export class ReviewUI {
         return;
       }
 
-      const name = key.name;
       const defaultSidebarVisible = this.renderer.terminalWidth >= 72;
       if (this.showNotes && ["up", "k", "down", "j", "return"].includes(name)) {
         key.preventDefault();
@@ -209,7 +241,7 @@ export class ReviewUI {
                                 }
                               : name === "r"
                                 ? () => this.controller.refresh({ force: true })
-                              : name === "?"
+                              : name === "?" || name === "f1"
                                 ? () => {
                                     this.showHelp = !this.showHelp;
                                   }
@@ -292,8 +324,11 @@ export class ReviewUI {
     const narrow = this.renderer.terminalWidth < 72;
     const sidebarVisible =
       this.controller.sidebarVisible ?? !narrow;
+    const sidebarWidth = this.clampedSidebarWidth();
     this.files.visible = sidebarVisible;
-    this.files.width = sidebarVisible ? (narrow ? "100%" : 30) : 0;
+    this.files.width = sidebarVisible ? (narrow ? "100%" : sidebarWidth) : 0;
+    this.splitter.visible = sidebarVisible && !narrow;
+    this.splitter.width = this.splitter.visible ? 1 : 0;
     this.main.flexDirection = narrow ? "column" : "row";
     if (narrow) this.files.height = sidebarVisible ? "45%" : 0;
 
@@ -304,6 +339,42 @@ export class ReviewUI {
     await this.renderDiff(version);
     this.renderBottom();
     this.renderer.requestRender();
+  }
+
+  clampedSidebarWidth() {
+    const available = Math.max(
+      MIN_SIDEBAR_WIDTH,
+      this.renderer.terminalWidth - MIN_DIFF_WIDTH,
+    );
+    return Math.max(
+      MIN_SIDEBAR_WIDTH,
+      Math.min(
+        MAX_SIDEBAR_WIDTH,
+        available,
+        this.controller.sidebarWidth,
+      ),
+    );
+  }
+
+  resizeSidebar(terminalX, { persist = false } = {}) {
+    if (this.renderer.terminalWidth < 72 || !this.files.visible) return;
+    const next = terminalX - this.main.x;
+    const max = Math.max(
+      MIN_SIDEBAR_WIDTH,
+      Math.min(
+        MAX_SIDEBAR_WIDTH,
+        this.renderer.terminalWidth - MIN_DIFF_WIDTH,
+      ),
+    );
+    const width = Math.max(MIN_SIDEBAR_WIDTH, Math.min(max, next));
+    this.controller.setSidebarWidth(width, { persist });
+    this.files.width = width;
+    this.renderer.requestRender();
+  }
+
+  finishSidebarResize(terminalX) {
+    this.resizeSidebar(terminalX, { persist: true });
+    this.resizingSidebar = false;
   }
 
   renderFiles() {
@@ -523,7 +594,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "help",
-          `↑/k ↓/j rows · [ ] hunks · { } files · b sidebar · v range · s side (${this.controller.preferredSide}) · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ? help · Esc cancel · mouse click/Shift-click/drag`,
+          `↑/k ↓/j rows · [ ] change blocks · { } files · b sidebar · v range · s context target · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ?/F1 help · Esc cancel · mouse click/Shift-click/drag`,
           { height: 2 },
         ),
       );
@@ -550,7 +621,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "status-text",
-          `${this.controller.status}  side:${this.controller.preferredSide} · b sidebar · ? help · r refresh · c comment · n notes`,
+          `${this.controller.status}  ${commentTarget(this.controller)} · b sidebar · ?/F1 help · r refresh · c comment · n notes`,
           { fg: this.controller.status.startsWith("Refresh failed") ? COLORS.warning : COLORS.context },
         ),
       );

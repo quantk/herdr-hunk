@@ -3,6 +3,7 @@ import { reanchorNotes } from "./review/anchors.mjs";
 import { ReviewController } from "./review/controller.mjs";
 import { GitSource } from "./review/git-source.mjs";
 import { createHighlighter } from "./review/highlighting.mjs";
+import { shortcutName } from "./review/shortcuts.mjs";
 import { readStore, saveStore } from "./review/store.mjs";
 import { ReviewUI } from "./review/ui.mjs";
 
@@ -77,7 +78,11 @@ async function main() {
     screenMode: "alternate-screen",
   });
   renderer.keyInput.on("keypress", (key) => {
-    if (key.eventType !== "release" && key.ctrl && key.name === "c") {
+    if (
+      key.eventType !== "release" &&
+      key.ctrl &&
+      shortcutName(key) === "c"
+    ) {
       key.preventDefault();
       requestShutdown();
     }

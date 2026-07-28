@@ -108,6 +108,13 @@ export function validateStore(document, reviewKey, repository) {
       typeof document.ui.sidebarVisible === "boolean",
     "invalid sidebar visibility",
   );
+  assert(
+    document.ui.sidebarWidth == null ||
+      (Number.isInteger(document.ui.sidebarWidth) &&
+        document.ui.sidebarWidth >= 18 &&
+        document.ui.sidebarWidth <= 80),
+    "invalid sidebar width",
+  );
   assert(Array.isArray(document.notes), "notes must be an array");
   assert(document.notes.length <= MAX_NOTES, `too many notes (limit ${MAX_NOTES})`);
   const ids = new Set();
@@ -125,7 +132,12 @@ export function emptyStore(reviewKey, repository) {
     reviewKey,
     repository,
     updatedAt: new Date(0).toISOString(),
-    ui: { filePath: null, rowId: null, sidebarVisible: null },
+    ui: {
+      filePath: null,
+      rowId: null,
+      sidebarVisible: null,
+      sidebarWidth: null,
+    },
     notes: [],
   };
 }
@@ -182,7 +194,12 @@ export function migrateLegacyStore(legacy, reviewKey, repository, model) {
       reviewKey,
       repository,
       updatedAt: now,
-      ui: { filePath: null, rowId: null, sidebarVisible: null },
+      ui: {
+        filePath: null,
+        rowId: null,
+        sidebarVisible: null,
+        sidebarWidth: null,
+      },
       notes: anchored,
     },
     reviewKey,

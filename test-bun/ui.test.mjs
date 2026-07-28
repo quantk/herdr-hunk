@@ -128,6 +128,36 @@ test("sidebar toggles without losing selection and file rows are not text-select
   expect(app.ui.files.visible).toBe(true);
   expect(app.controller.file.id).toBe(selectedFile);
   expect(app.controller.store.ui.sidebarVisible).toBe(true);
+
+  const initialWidth = app.controller.sidebarWidth;
+  const splitterX = app.ui.splitter.x;
+  await app.mockMouse.drag(splitterX, 5, splitterX + 10, 5);
+  await app.flush();
+  expect(app.controller.sidebarWidth).toBeGreaterThan(initialWidth);
+  expect(app.controller.store.ui.sidebarWidth).toBe(
+    app.controller.sidebarWidth,
+  );
+});
+
+test("Russian-layout shortcuts navigate and expose the context comment target", async () => {
+  const app = await setup();
+
+  app.mockInput.pressKey("о");
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(1);
+
+  app.mockInput.pressKey("л");
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(0);
+
+  app.mockInput.pressKey("ы");
+  await app.flush();
+  expect(app.controller.preferredSide).toBe("old");
+  expect(app.captureCharFrame()).toContain("target:old:1");
+
+  app.mockInput.pressKey("и");
+  await app.flush();
+  expect(app.ui.files.visible).toBe(false);
 });
 
 test("mouse row selection and range drag map to model row indexes", async () => {

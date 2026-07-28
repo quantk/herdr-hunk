@@ -65,6 +65,7 @@ test("controller keeps one active refresh, queues only the latest, and persists 
   assert.equal(stored.ui.filePath, "a.js");
   assert.equal(stored.ui.rowId, controller.row.id);
   assert.equal(stored.ui.sidebarVisible, null);
+  assert.equal(stored.ui.sidebarWidth, 30);
 });
 
 test("controller finalizes a contiguous same-side range and keeps drafts off disk until save", () => {
@@ -114,12 +115,34 @@ test("controller can anchor an unchanged context line on either side", () => {
   controller.model = contextModel;
   controller.rowIndex = 0;
   controller.toggleSide();
+  assert.match(controller.status, /OLD line 1/);
   controller.beginComment();
   assert.equal(controller.editor.anchor.side, "old");
   controller.cancelEditor();
   controller.toggleSide();
+  assert.match(controller.status, /NEW line 1/);
   controller.beginComment();
   assert.equal(controller.editor.anchor.side, "new");
+});
+
+test("controller explains fixed sides for additions and deletions", () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "herdr-controller-fixed-side-"));
+  const controller = new ReviewController({
+    source: {},
+    stateDir,
+    store: emptyStore("review-fixed-side", "/repo"),
+  });
+  controller.model = model(1);
+
+  controller.rowIndex = 0;
+  controller.toggleSide();
+  assert.match(controller.status, /Deleted lines only exist on OLD line 1/);
+  assert.equal(controller.preferredSide, "new");
+
+  controller.rowIndex = 1;
+  controller.toggleSide();
+  assert.match(controller.status, /Added lines only exist on NEW line 1/);
+  assert.equal(controller.preferredSide, "new");
 });
 
 test("controller toggles and persists the sidebar without losing file state", () => {
@@ -144,5 +167,12 @@ test("controller toggles and persists the sidebar without losing file state", ()
   assert.equal(
     readStore(stateDir, "review-sidebar", "/repo").ui.sidebarVisible,
     true,
+  );
+
+  controller.setSidebarWidth(48, { persist: true });
+  assert.equal(controller.sidebarWidth, 48);
+  assert.equal(
+    readStore(stateDir, "review-sidebar", "/repo").ui.sidebarWidth,
+    48,
   );
 });

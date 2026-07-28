@@ -116,26 +116,34 @@ The review pane uses this stable key contract:
 | Keys | Action |
 | --- | --- |
 | arrows or `j` / `k` | Previous/next diff row |
-| `[` / `]` | Previous/next hunk |
+| `[` / `]` | Previous/next separated change block |
 | `{` / `}` | Previous/next file |
 | `b` | Show/hide the file sidebar |
 | `v` | Begin/end contiguous range selection |
-| `s` | Prefer old/new side when commenting on context |
+| `s` | Choose old/new target for an unchanged context line |
 | `c` | Comment on the selected line/range |
 | `e` | Edit a saved comment at the current location |
 | `d`, then `d` | Confirm deletion of a saved comment |
 | `n` | Show/hide saved comments; arrows select and Enter jumps |
 | `r` | Refresh immediately |
-| `?` | Show/hide help |
+| `?` or `F1` | Show/hide help |
 | `Esc` | Cancel editor, range, confirmation, or overlay |
 | `Ctrl+S` | Save the active multiline comment |
 | `Ctrl+C` | Close the review pane and restore the terminal |
 
 Mouse wheel scrolling, file and row clicks, Shift-click range extension, drag
-selection, and editor cursor placement are supported. Narrow panes initially
-collapse the file list; `b` shows or hides it without losing the current file
-and row. Saved comment text is rendered inline beneath its anchored diff
-range; `n` opens the complete saved-comments list, including stale notes.
+selection, and editor cursor placement are supported. Drag the vertical
+divider to resize the file sidebar; its width is restored with the review.
+Narrow panes initially collapse the file list; `b` shows or hides it without
+losing the current file and row. Saved comment text is rendered inline beneath
+its anchored diff range; `n` opens the complete saved-comments list, including
+stale notes.
+
+Letter and bracket shortcuts follow the physical QWERTY key position when the
+terminal reports it and include a Russian-layout fallback. Text entered in the
+comment editor is not remapped. The `s` target matters only for unchanged
+context lines, which exist on both sides of a diff; additions always target
+`new`, and deletions always target `old`.
 
 Only a nonempty comment explicitly saved with `Ctrl+S` reaches disk. Cancelled
 and unfinished comments cannot reach `F7`. Saved comments remain visible and
