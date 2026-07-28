@@ -66,7 +66,7 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
             "HERDR_PLUGIN_STATE_DIR": str(state),
         }
         process = subprocess.Popen(
-            [BUN, "run", str(ROOT / "src/review-pane.mjs")],
+            [BUN, str(ROOT / "src/review-pane.mjs")],
             cwd=ROOT,
             env=environment,
             stdin=slave,

@@ -26,4 +26,4 @@ command = ["node", "src/send-notes.mjs"]
 id = "review"
 title = "Review"
 placement = "split"
-command = ["bun", "run", "src/review-pane.mjs"]
+command = ["bun", "src/review-pane.mjs"]
