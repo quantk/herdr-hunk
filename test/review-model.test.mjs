@@ -7,6 +7,7 @@ import {
 } from "../src/review/parse-diff.mjs";
 import { detectFiletype } from "../src/review/languages.mjs";
 import {
+  compactPathLabels,
   terminalSafeLine,
   terminalSafeText,
 } from "../src/review/model.mjs";
@@ -146,5 +147,37 @@ test("untracked patch and language detection cover supported forms", () => {
   assert.equal(
     terminalSafeLine("line\n\t\u202e"),
     "line\\n\\t\\u202e",
+  );
+});
+
+test("compactPathLabels keeps parent context and expands colliding suffixes", () => {
+  const orderScreen =
+    "features/orders/src/main/kotlin/com/acme/orders/ui/OrderScreen.kt";
+  const profileScreen =
+    "features/profile/src/main/kotlin/com/acme/profile/ui/OrderScreen.kt";
+  const labels = compactPathLabels([
+    orderScreen,
+    profileScreen,
+    "core/network/ApiClient.kt",
+    "README.md",
+  ]);
+
+  assert.equal(labels.get(orderScreen), "orders/ui/OrderScreen.kt");
+  assert.equal(labels.get(profileScreen), "profile/ui/OrderScreen.kt");
+  assert.equal(labels.get("core/network/ApiClient.kt"), "network/ApiClient.kt");
+  assert.equal(labels.get("README.md"), "README.md");
+  assert.equal(new Set(labels.values()).size, labels.size);
+});
+
+test("compactPathLabels handles a path that is itself another path's suffix", () => {
+  const labels = compactPathLabels([
+    "ui/State.kt",
+    "features/orders/ui/State.kt",
+  ]);
+
+  assert.equal(labels.get("ui/State.kt"), "ui/State.kt");
+  assert.equal(
+    labels.get("features/orders/ui/State.kt"),
+    "orders/ui/State.kt",
   );
 });

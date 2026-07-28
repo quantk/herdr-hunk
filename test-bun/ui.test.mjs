@@ -268,6 +268,43 @@ test("sidebar toggles without losing selection and file rows are not text-select
   );
 });
 
+test("sidebar renders compact unique file paths while the diff keeps the full path", async () => {
+  const orderScreen =
+    "features/orders/src/main/kotlin/com/acme/orders/ui/OrderScreen.kt";
+  const profileScreen =
+    "features/profile/src/main/kotlin/com/acme/profile/ui/OrderScreen.kt";
+  const model = parseUnifiedDiff(
+    [
+      `diff --git a/${orderScreen} b/${orderScreen}`,
+      `--- a/${orderScreen}`,
+      `+++ b/${orderScreen}`,
+      "@@ -0,0 +1 @@",
+      "+orders",
+      `diff --git a/${profileScreen} b/${profileScreen}`,
+      `--- a/${profileScreen}`,
+      `+++ b/${profileScreen}`,
+      "@@ -0,0 +1 @@",
+      "+profile",
+    ].join("\n"),
+    { generation: 1 },
+  );
+  const app = await setup(120, 24, undefined, model);
+  const orderRow = app.ui.files.findDescendantById(
+    `file:${model.files[0].id}`,
+  );
+  const profileRow = app.ui.files.findDescendantById(
+    `file:${model.files[1].id}`,
+  );
+
+  expect(orderRow.plainText).toContain("orders/ui/OrderScreen.kt");
+  expect(profileRow.plainText).toContain("profile/ui/OrderScreen.kt");
+  expect(orderRow.plainText).not.toContain("src/main/kotlin");
+  const fileHeader = app.ui.diff.content.findDescendantById(
+    `file-header:${model.files[0].id}`,
+  );
+  expect(fileHeader.plainText).toBe(orderScreen);
+});
+
 test("concurrent resize renders are serialized and coalesced", async () => {
   let measuring = false;
   let active = 0;

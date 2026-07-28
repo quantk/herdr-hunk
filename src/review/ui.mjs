@@ -8,6 +8,7 @@ import {
 import { detectFiletype } from "./languages.mjs";
 import {
   commentSide,
+  compactPathLabels,
   terminalSafeLine,
   terminalSafeText,
 } from "./model.mjs";
@@ -674,6 +675,9 @@ export class ReviewUI {
     for (const note of this.controller.openNotes) {
       notesByPath.set(note.anchor.path, (notesByPath.get(note.anchor.path) ?? 0) + 1);
     }
+    const pathLabels = compactPathLabels(
+      this.controller.model.files.map((file) => file.path),
+    );
     this.controller.model.files.forEach((file, index) => {
       const selected = index === this.controller.fileIndex;
       const status = {
@@ -686,7 +690,7 @@ export class ReviewUI {
       const item = text(
         this.ctx,
         `file:${file.id}`,
-        `${selected ? "›" : " "} ${status} ${terminalSafeLine(file.path)}${count ? ` (${count})` : ""}`,
+        `${selected ? "›" : " "} ${status} ${terminalSafeLine(pathLabels.get(file.path) ?? file.path)}${count ? ` (${count})` : ""}`,
         {
           backgroundColor: selected ? COLORS.selected : undefined,
           fg: selected ? COLORS.accent : COLORS.context,

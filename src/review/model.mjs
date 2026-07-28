@@ -75,3 +75,31 @@ export function terminalSafeLine(value) {
     .replaceAll("\t", "\\t")
     .replaceAll("\n", "\\n");
 }
+
+export function compactPathLabels(paths) {
+  const uniquePaths = [...new Set(paths.map(String))];
+  const partsByPath = new Map(
+    uniquePaths.map((path) => [path, path.split("/")]),
+  );
+  const labels = new Map();
+
+  for (const path of uniquePaths) {
+    const parts = partsByPath.get(path);
+    let depth = Math.min(2, parts.length);
+
+    while (depth < parts.length) {
+      const suffix = parts.slice(-depth).join("/");
+      const collides = uniquePaths.some((otherPath) => {
+        if (otherPath === path) return false;
+        const otherParts = partsByPath.get(otherPath);
+        return otherParts.slice(-depth).join("/") === suffix;
+      });
+      if (!collides) break;
+      depth += 1;
+    }
+
+    labels.set(path, parts.slice(-depth).join("/"));
+  }
+
+  return labels;
+}

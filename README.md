@@ -175,6 +175,9 @@ The review pane uses this stable key contract:
 Mouse wheel scrolling, file and row clicks, Shift-click range extension, drag
 selection, and editor cursor placement are supported. Drag the vertical
 divider to resize the file sidebar; its width is restored with the review.
+Sidebar entries show at least `parent/file` and add parent directories only
+when needed to distinguish files with matching suffixes. The selected diff
+header continues to show the complete repository-relative path.
 Narrow panes initially collapse the file list; `b` shows or hides it without
 losing the current file and row. Saved comment text is rendered inline beneath
 its anchored diff range; `n` opens the complete saved-comments list, including

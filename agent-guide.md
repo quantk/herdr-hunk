@@ -134,8 +134,11 @@ Fix only problems introduced by this setup. An attached client may need
    jump to the first/last row of the current file with `gg`/`G`, use
    `Ctrl+U`/`Ctrl+D` for half-page movement, and switch change blocks or files
    with `[`/`]` and `{`/`}`; toggle the file sidebar with `b` or drag its
-   divider to resize it, and toggle long-row wrapping with `w`. Letter and
-   bracket shortcuts also work from a Russian keyboard layout.
+   divider to resize it, and toggle long-row wrapping with `w`. Sidebar labels
+   show at least `parent/file` and expand only as needed to distinguish
+   matching suffixes; the selected diff header keeps the complete
+   repository-relative path. Letter and bracket shortcuts also work from a
+   Russian keyboard layout.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
 5. Press `F6` from the review tab to return to the source agent tab; press it
    from the source agent to switch back to the same live review tab.
