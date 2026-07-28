@@ -31,6 +31,11 @@ def read_available(master: int, output: bytearray, timeout: float) -> None:
         pass
 
 
+def reset_test_signals() -> None:
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+
 def run_signal_case(stop_signal: signal.Signals) -> None:
     with tempfile.TemporaryDirectory(prefix="herdr-review-pty-") as temporary:
         work = Path(temporary)
@@ -68,6 +73,7 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
             stdout=slave,
             stderr=slave,
             start_new_session=True,
+            preexec_fn=reset_test_signals,
         )
         os.close(slave)
         output = bytearray()
