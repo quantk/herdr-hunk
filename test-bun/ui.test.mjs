@@ -393,6 +393,30 @@ test("j/k navigation keeps the selected row inside a long diff viewport", async 
   expect(app.captureCharFrame()).toContain("const line1 = 1;");
 });
 
+test("gg and G jump to file boundaries and keep the selected row visible", async () => {
+  const app = await setup(80, 12, undefined, longModel());
+
+  app.mockInput.pressKey("g", { shift: true });
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(app.controller.file.rows.length - 1);
+  expectSelectedRowVisible(app);
+
+  app.mockInput.pressKey("g");
+  app.mockInput.pressKey("g");
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(0);
+  expectSelectedRowVisible(app);
+
+  app.mockInput.pressKey("П", { shift: true });
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(app.controller.file.rows.length - 1);
+
+  app.mockInput.pressKey("п");
+  app.mockInput.pressKey("п");
+  await app.flush();
+  expect(app.controller.rowIndex).toBe(0);
+});
+
 test("Ctrl+D and Ctrl+U move by half a viewport and keep selection visible", async () => {
   const app = await setup(80, 12, undefined, longModel());
 

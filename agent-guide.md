@@ -131,9 +131,10 @@ Fix only problems introduced by this setup. An attached client may need
 3. Choose `1` for current uncommitted work, `2` for everything since the
    branch diverged from its local main/master base, or `3` for the latest
    file-changing turn observed from this exact agent. Navigate with `j`/`k`,
-   use `Ctrl+U`/`Ctrl+D` for half-page movement, and switch change blocks or
-   files with `[`/`]` and `{`/`}`; toggle the file sidebar with `b` or drag
-   its divider to resize it, and toggle long-row wrapping with `w`. Letter and
+   jump to the first/last row of the current file with `gg`/`G`, use
+   `Ctrl+U`/`Ctrl+D` for half-page movement, and switch change blocks or files
+   with `[`/`]` and `{`/`}`; toggle the file sidebar with `b` or drag its
+   divider to resize it, and toggle long-row wrapping with `w`. Letter and
    bracket shortcuts also work from a Russian keyboard layout.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
 5. Press `F6` to hide/restore the same live pane.

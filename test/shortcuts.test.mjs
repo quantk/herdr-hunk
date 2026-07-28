@@ -16,6 +16,10 @@ test("shortcut names use physical base codes when terminals report them", () => 
     shortcutName(key(",", { baseCode: "/".codePointAt(0), shift: true })),
     "?",
   );
+  assert.equal(
+    shortcutName(key("G", { baseCode: "G".codePointAt(0), shift: true })),
+    "G",
+  );
 });
 
 test("shortcut names fall back to Russian QWERTY aliases", () => {
@@ -23,6 +27,8 @@ test("shortcut names fall back to Russian QWERTY aliases", () => {
   assert.equal(shortcutName(key("л")), "k");
   assert.equal(shortcutName(key("с")), "c");
   assert.equal(shortcutName(key("ч")), "x");
+  assert.equal(shortcutName(key("п")), "g");
+  assert.equal(shortcutName(key("П", { shift: true })), "G");
   assert.equal(shortcutName(key("ы", { ctrl: true })), "s");
   assert.equal(shortcutName(key("в", { ctrl: true })), "d");
   assert.equal(shortcutName(key("г", { ctrl: true })), "u");

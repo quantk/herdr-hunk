@@ -40,20 +40,26 @@ const RUSSIAN_QWERTY = Object.freeze({
 });
 
 function shiftedShortcut(name, shift) {
+  if (shift && name === "g") return "G";
   return shift ? (SHIFTED_BASE_KEYS[name] ?? name) : name;
 }
 
 export function shortcutName(key) {
   if (Number.isInteger(key.baseCode)) {
     const base = String.fromCodePoint(key.baseCode);
-    if (/^[A-Z]$/u.test(base)) return base.toLowerCase();
-    if (/^[a-z]$/u.test(base)) return base;
+    if (/^[A-Z]$/u.test(base)) {
+      return shiftedShortcut(base.toLowerCase(), key.shift);
+    }
+    if (/^[a-z]$/u.test(base)) return shiftedShortcut(base, key.shift);
     return shiftedShortcut(base, key.shift);
   }
 
   const name = String(key.name ?? "");
   if ([...name].length !== 1) return name;
   const lower = name.toLocaleLowerCase("ru-RU");
+  if (/^[a-z]$/u.test(lower)) {
+    return shiftedShortcut(lower, key.shift || name !== lower);
+  }
   const physical = RUSSIAN_QWERTY[lower];
   if (!physical) return name;
   const shifted = key.shift || name !== lower;
