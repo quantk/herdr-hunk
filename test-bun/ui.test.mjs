@@ -130,6 +130,7 @@ test("sidebar toggles without losing selection and file rows are not text-select
   expect(app.controller.store.ui.sidebarVisible).toBe(true);
 
   const initialWidth = app.controller.sidebarWidth;
+  expect(app.ui.splitter.shouldFill).toBe(false);
   const splitterX = app.ui.splitter.x;
   await app.mockMouse.drag(splitterX, 5, splitterX + 10, 5);
   await app.flush();

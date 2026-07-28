@@ -10,7 +10,6 @@ import { commentSide, terminalSafeText } from "./model.mjs";
 import { shortcutName } from "./shortcuts.mjs";
 
 const COLORS = {
-  border: "#5c6370",
   selected: "#30384a",
   addition: "#98c379",
   deletion: "#e06c75",
@@ -136,10 +135,16 @@ export class ReviewUI {
     this.splitter = new BoxRenderable(this.ctx, {
       id: "review-splitter",
       width: 1,
-      backgroundColor: COLORS.border,
+      shouldFill: false,
       onMouseDown: (event) => {
         this.resizingSidebar = true;
         event.preventDefault();
+      },
+      onMouseOver: () => {
+        this.renderer.setMousePointer("move");
+      },
+      onMouseOut: () => {
+        this.renderer.setMousePointer("default");
       },
     });
     this.diff = new ScrollBoxRenderable(this.ctx, {
@@ -375,6 +380,7 @@ export class ReviewUI {
   finishSidebarResize(terminalX) {
     this.resizeSidebar(terminalX, { persist: true });
     this.resizingSidebar = false;
+    this.renderer.setMousePointer("default");
   }
 
   renderFiles() {
