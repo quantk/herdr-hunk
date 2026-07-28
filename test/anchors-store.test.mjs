@@ -142,7 +142,38 @@ test("legacy migration keeps only human notes, backs up once, and marks unknown 
   assert.equal(store.notes.length, 1);
   assert.equal(store.notes[0].provenance, "human");
   assert.equal(store.notes[0].status, "stale");
-  assert.equal(JSON.parse(readFileSync(path, "utf8")).version, 2);
+  assert.equal(JSON.parse(readFileSync(path, "utf8")).version, 3);
   assert.ok(existsSync(`${path}.v1.bak`));
   assert.equal(readStore(stateDir, "review-2", "/repo").notes.length, 1);
+});
+
+test("v2 stores migrate existing UI and notes into uncommitted scope", () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "herdr-native-v2-"));
+  const path = getSnapshotPath(stateDir, "review-v2");
+  mkdirSync(join(stateDir, "snapshots"));
+  const diff = model([" same", "+new"]);
+  const row = diff.files[0].rows.find((candidate) => candidate.kind === "addition");
+  const note = createHumanNote(
+    "Existing note.",
+    createAnchor(diff.files[0], [row], 1),
+  );
+  delete note.scope;
+  const document = {
+    ...emptyStore("review-v2", "/repo"),
+    version: 2,
+    ui: {
+      filePath: "a.js",
+      rowId: row.id,
+      sidebarVisible: true,
+      sidebarWidth: 30,
+    },
+    notes: [note],
+  };
+  writeFileSync(path, JSON.stringify(document), "utf8");
+
+  const migrated = readStore(stateDir, "review-v2", "/repo");
+  assert.equal(migrated.version, 3);
+  assert.equal(migrated.ui.scope, "uncommitted");
+  assert.equal(migrated.notes[0].scope, "uncommitted");
+  assert.equal(existsSync(`${path}.v2.bak`), true);
 });

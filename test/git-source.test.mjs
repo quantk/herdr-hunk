@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { GitSource } from "../src/review/git-source.mjs";
+import { AgentTurnTracker } from "../src/review/turn-tracker.mjs";
 
 function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], {
@@ -110,4 +111,106 @@ test("GitSource supports an unborn repository without writing an index", async (
   assert.equal(model.files[0].path, "first.txt");
   assert.equal(model.files[0].status, "added");
   assert.equal(git(repo, "status", "--porcelain=v1"), beforeStatus);
+});
+
+test("GitSource branch scope includes committed, working-tree, and untracked changes from merge-base", async () => {
+  const repo = createRepo();
+  writeFileSync(join(repo, "committed.txt"), "base\n");
+  writeFileSync(join(repo, "working.txt"), "base\n");
+  writeFileSync(join(repo, "old.txt"), "rename\n");
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "base");
+  git(repo, "branch", "-M", "main");
+  git(repo, "switch", "-qc", "feature");
+
+  writeFileSync(join(repo, "committed.txt"), "feature\n");
+  git(repo, "mv", "old.txt", "renamed.txt");
+  git(repo, "add", "committed.txt");
+  git(repo, "commit", "-qm", "feature change");
+  writeFileSync(join(repo, "working.txt"), "working tree\n");
+  writeFileSync(join(repo, "untracked.txt"), "new\n");
+
+  const source = new GitSource(repo);
+  source.setScope("branch");
+  const model = await source.refresh(1);
+  const paths = new Set(model.files.map((file) => file.path));
+
+  assert.equal(source.branchBaseLabel, "main");
+  assert.equal(paths.has("committed.txt"), true);
+  assert.equal(paths.has("working.txt"), true);
+  assert.equal(paths.has("untracked.txt"), true);
+  assert.equal(
+    model.files.find((file) => file.path === "renamed.txt")?.status,
+    "renamed",
+  );
+});
+
+test("GitSource last-turn scope compares worktree trees across an agent commit", async () => {
+  const repo = createRepo();
+  writeFileSync(join(repo, "value.txt"), "before\n");
+  writeFileSync(join(repo, ".gitignore"), "*.ignored\n");
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "base");
+
+  const source = new GitSource(repo);
+  const baseline = await source.snapshotWorktree();
+  const testRef = "refs/herdr-hunk/test/last-turn";
+  await source.writeTreeRef(testRef, baseline);
+  assert.equal(await source.readTreeRef(testRef), baseline);
+  await source.deleteTreeRef(testRef);
+  assert.equal(await source.readTreeRef(testRef), null);
+  writeFileSync(join(repo, "value.txt"), "after\n");
+  writeFileSync(join(repo, "new.txt"), "new\n");
+  writeFileSync(join(repo, "hidden.ignored"), "ignored\n");
+  git(repo, "add", "value.txt");
+  git(repo, "commit", "-qm", "agent commit");
+
+  source.setTurnBaseline(baseline);
+  source.setTurnTarget(await source.snapshotWorktree());
+  source.setScope("last-turn");
+  const model = await source.refresh(2);
+  const paths = new Set(model.files.map((file) => file.path));
+
+  assert.equal(paths.has("value.txt"), true);
+  assert.equal(paths.has("new.txt"), true);
+  assert.equal(paths.has("hidden.ignored"), false);
+});
+
+test("agent turn tracking persists and freezes an end-to-end last-turn diff", async () => {
+  const repo = createRepo();
+  writeFileSync(join(repo, "during.txt"), "before\n");
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "base");
+
+  const source = new GitSource(repo);
+  const tracker = new AgentTurnTracker({
+    source,
+    agentPaneId: "w1:p1",
+    reviewKey: "integration-turn",
+  });
+  const statuses = ["idle", "working", "working", "idle"];
+  tracker.readStatus = async () => statuses.shift();
+  await tracker.initialize();
+  await tracker.sample();
+  await tracker.sample();
+
+  writeFileSync(join(repo, "during.txt"), "agent change\n");
+  await tracker.sample();
+  git(repo, "add", "during.txt");
+  git(repo, "commit", "-qm", "agent commit");
+  writeFileSync(join(repo, "ending.txt"), "final change\n");
+  await tracker.sample();
+
+  source.setScope("last-turn");
+  const model = await source.refresh(1);
+  const paths = new Set(model.files.map((file) => file.path));
+  assert.equal(paths.has("during.txt"), true);
+  assert.equal(paths.has("ending.txt"), true);
+
+  writeFileSync(join(repo, "after.txt"), "human change after idle\n");
+  const frozen = await source.refresh(2);
+  assert.equal(
+    frozen.files.some((file) => file.path === "after.txt"),
+    false,
+  );
 });

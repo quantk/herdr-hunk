@@ -106,11 +106,14 @@ Fix only problems introduced by this setup. An attached client may need
 ## 5. Explain the workflow
 
 1. Focus a detected coding agent in a Git repository.
-2. Press `F6` to open the native working-tree review.
-3. Navigate with `j`/`k`, use `Ctrl+U`/`Ctrl+D` for half-page movement, and
-   switch change blocks or files with `[`/`]` and `{`/`}`; toggle the file
-   sidebar with `b` or drag its divider to resize it. Letter and bracket
-   shortcuts also work from a Russian keyboard layout.
+2. Press `F6` to open the native review.
+3. Choose `1` for current uncommitted work, `2` for everything since the
+   branch diverged from its local main/master base, or `3` for the latest
+   file-changing turn observed from this exact agent. Navigate with `j`/`k`,
+   use `Ctrl+U`/`Ctrl+D` for half-page movement, and switch change blocks or
+   files with `[`/`]` and `{`/`}`; toggle the file sidebar with `b` or drag
+   its divider to resize it. Letter and bracket shortcuts also work from a
+   Russian keyboard layout.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
 5. Press `F6` to hide/restore the same live pane.
 6. Press `F7` to insert validated saved comments into the exact source agent.
@@ -118,11 +121,14 @@ Fix only problems introduced by this setup. An attached client may need
 
 The plugin never submits, never clears existing agent input, excludes
 unfinished comments, and refuses ambiguous review routing. Saved comments are
-shown inline beneath their diff range. Press `?` or `F1` inside the pane for
-the full keyboard/mouse reference. `s` chooses the old/new target only for
-unchanged context lines; additions are always new and deletions are always
-old. `Ctrl+C` closes the review pane cleanly; `F6` can reopen it with saved
-comments, sidebar visibility, and sidebar width intact.
+shown inline beneath their diff range and are kept separate per review scope;
+`F7` sends only the active scope. Last-turn tracking starts after the pane
+observes an idle-to-working transition and freezes when that turn finishes.
+Press `?` or `F1` inside the pane for the full keyboard/mouse reference. `s`
+chooses the old/new target only for unchanged context lines; additions are
+always new and deletions are always old. `Ctrl+C` closes the review pane
+cleanly; `F6` can reopen it with saved comments, active scope, sidebar
+visibility, and sidebar width intact.
 
 ## 6. Report
 

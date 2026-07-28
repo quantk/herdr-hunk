@@ -109,7 +109,7 @@ test("addition and deletion rows use distinct full-row backgrounds", async () =>
 
 test("keyboard navigation, multiline paste, save, cancel, and resize preserve state", async () => {
   const app = await setup();
-  expect(app.captureCharFrame()).toContain("unified diff");
+  expect(app.captureCharFrame()).toContain("uncommitted");
 
   app.mockInput.pressKey("j");
   await app.flush();
@@ -192,6 +192,40 @@ test("sidebar toggles without losing selection and file rows are not text-select
   expect(app.controller.store.ui.sidebarWidth).toBe(
     app.controller.sidebarWidth,
   );
+});
+
+test("scope switching isolates comments and persists the active scope", async () => {
+  const app = await setup();
+
+  app.mockInput.pressKey("c");
+  await app.waitFor(() => app.controller.editor != null);
+  await app.mockInput.typeText("Working-tree note");
+  app.mockInput.pressKey("s", { ctrl: true });
+  await app.waitFor(() => app.controller.editor == null);
+  expect(app.controller.notes).toHaveLength(1);
+  expect(app.controller.notes[0].scope).toBe("uncommitted");
+
+  app.mockInput.pressKey("2");
+  await app.waitFor(() => app.controller.scope === "branch");
+  await app.flush();
+  expect(app.controller.notes).toHaveLength(0);
+  expect(app.controller.store.ui.scope).toBe("branch");
+
+  app.mockInput.pressKey("c");
+  await app.waitFor(() => app.controller.editor != null);
+  await app.mockInput.typeText("Branch note");
+  app.mockInput.pressKey("s", { ctrl: true });
+  await app.waitFor(() => app.controller.editor == null);
+  expect(app.controller.notes).toHaveLength(1);
+  expect(app.controller.notes[0].scope).toBe("branch");
+  expect(app.controller.store.notes).toHaveLength(2);
+
+  app.mockInput.pressKey("1");
+  await app.waitFor(() => app.controller.scope === "uncommitted");
+  await app.flush();
+  expect(app.controller.notes.map((note) => note.body)).toEqual([
+    "Working-tree note",
+  ]);
 });
 
 test("Russian-layout shortcuts navigate and expose the context comment target", async () => {

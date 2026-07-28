@@ -11,6 +11,7 @@ import {
   selectReview,
 } from "./common.mjs";
 import { insertPaneDraft } from "./herdr-api.mjs";
+import { noteMatchesScope, scopeLabel } from "./review/scopes.mjs";
 import { readStore } from "./review/store.mjs";
 
 function getActiveReviews(herdr, reviews) {
@@ -56,6 +57,25 @@ function notify(herdr, title, body) {
   );
 }
 
+function activeScopeBase(store, review) {
+  if (store.ui.scope !== "last-turn") return store.ui.scopeBase;
+  const resolved = spawnSync(
+    "git",
+    [
+      "-C",
+      review.repo,
+      "rev-parse",
+      "--verify",
+      `refs/herdr-hunk/turn-base/${review.reviewKey}^{tree}`,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  return resolved.status === 0 ? resolved.stdout.trim() : null;
+}
+
 async function main() {
   const stateDir = process.env.HERDR_PLUGIN_STATE_DIR;
   const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR;
@@ -67,9 +87,17 @@ async function main() {
   if (!review) throw new Error("No running review was found.");
 
   const store = readStore(stateDir, review.reviewKey, review.repo);
-  const notes = store.notes.filter((note) => note.provenance === "human");
+  const scope = store.ui.scope;
+  const scopeBase = activeScopeBase(store, review);
+  const notes = store.notes.filter(
+    (note) =>
+      note.provenance === "human" &&
+      noteMatchesScope(note, scope, scopeBase),
+  );
   if (notes.length === 0) {
-    throw new Error("This review has no saved human notes. Add and save a comment, then try again.");
+    throw new Error(
+      `The active ${scopeLabel(scope)} review has no saved human notes. Add and save a comment, then try again.`,
+    );
   }
   const prompt = buildAgentPrompt(
     notes,

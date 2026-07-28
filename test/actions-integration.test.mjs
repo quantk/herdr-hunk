@@ -156,7 +156,7 @@ test("F7 loads the exact native store and inserts one unsubmitted human-only dra
     ),
   );
   const selectedText = ["const value = 2;"];
-  const note = createHumanNote("Use a clearer name.", {
+  const note = createHumanNote("Working-tree note must stay out.", {
     path: "src/a.js",
     previousPath: null,
     side: "new",
@@ -172,9 +172,19 @@ test("F7 loads the exact native store and inserts one unsubmitted human-only dra
     ),
     diffGeneration: 1,
   });
+  const branchNote = createHumanNote(
+    "Use a clearer name.",
+    note.anchor,
+    "",
+    "branch",
+  );
   saveStore(stateDir, {
     ...emptyStore("review-f7", repo),
-    notes: [note],
+    ui: {
+      ...emptyStore("review-f7", repo).ui,
+      scope: "branch",
+    },
+    notes: [note, branchNote],
   });
 
   const socketPath = join(root, "herdr.sock");
@@ -221,6 +231,7 @@ test("F7 loads the exact native store and inserts one unsubmitted human-only dra
   assert.deepEqual(request.params.keys, []);
   assert.match(request.params.text, /src\/a\.js, new lines 2/);
   assert.match(request.params.text, /Use a clearer name/);
+  assert.doesNotMatch(request.params.text, /Working-tree note must stay out/);
   assert.match(request.params.text, /const value = 2/);
   assert.doesNotMatch(request.params.text, /\nEnter\b/);
 });

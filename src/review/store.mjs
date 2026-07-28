@@ -13,8 +13,9 @@ import {
   writeJsonAtomic,
 } from "../common.mjs";
 import { contextHash, reanchorNotes } from "./anchors.mjs";
+import { normalizeScope, REVIEW_SCOPES } from "./scopes.mjs";
 
-export const STORE_VERSION = 2;
+export const STORE_VERSION = 3;
 export const MAX_NOTE_BYTES = 64 * 1024;
 export const MAX_NOTES = 500;
 
@@ -37,6 +38,11 @@ export function validateNote(note, repository) {
   assert(note.provenance === "human", "note provenance must be human");
   assert(typeof note.body === "string" && note.body.trim(), "note body is empty");
   assert(typeof note.title === "string", "note title must be a string");
+  assert(REVIEW_SCOPES.includes(note.scope), "invalid note scope");
+  assert(
+    note.scopeBase == null || typeof note.scopeBase === "string",
+    "invalid note scope base",
+  );
   assert(
     Buffer.byteLength(note.body, "utf8") <= MAX_NOTE_BYTES,
     `note exceeds ${MAX_NOTE_BYTES} bytes`,
@@ -115,6 +121,12 @@ export function validateStore(document, reviewKey, repository) {
         document.ui.sidebarWidth <= 80),
     "invalid sidebar width",
   );
+  assert(REVIEW_SCOPES.includes(document.ui.scope), "invalid review scope");
+  assert(
+    document.ui.scopeBase == null ||
+      typeof document.ui.scopeBase === "string",
+    "invalid UI scope base",
+  );
   assert(Array.isArray(document.notes), "notes must be an array");
   assert(document.notes.length <= MAX_NOTES, `too many notes (limit ${MAX_NOTES})`);
   const ids = new Set();
@@ -137,6 +149,8 @@ export function emptyStore(reviewKey, repository) {
       rowId: null,
       sidebarVisible: null,
       sidebarWidth: null,
+      scope: "uncommitted",
+      scopeBase: null,
     },
     notes: [],
   };
@@ -182,6 +196,8 @@ export function migrateLegacyStore(legacy, reviewKey, repository, model) {
     provenance: "human",
     title: typeof note.title === "string" ? note.title : "",
     body: note.body,
+    scope: "uncommitted",
+    scopeBase: null,
     anchor: legacyAnchor(note),
     status: "stale",
     createdAt: now,
@@ -199,6 +215,8 @@ export function migrateLegacyStore(legacy, reviewKey, repository, model) {
         rowId: null,
         sidebarVisible: null,
         sidebarWidth: null,
+        scope: "uncommitted",
+        scopeBase: null,
       },
       notes: anchored,
     },
@@ -220,8 +238,30 @@ export function readStore(stateDir, reviewKey, repository, { model } = {}) {
     return validateStore(parsed, reviewKey, repository);
   }
 
-  const migrated = migrateLegacyStore(parsed, reviewKey, repository, model);
-  const backup = `${path}.v1.bak`;
+  const migrated =
+    parsed?.version === 2
+      ? validateStore(
+          {
+            ...parsed,
+            version: STORE_VERSION,
+            ui: {
+              ...parsed.ui,
+              scope: normalizeScope(parsed.ui?.scope),
+              scopeBase: null,
+            },
+            notes: Array.isArray(parsed.notes)
+              ? parsed.notes.map((note) => ({
+                  ...note,
+                  scope: normalizeScope(note.scope),
+                  scopeBase: null,
+                }))
+              : [],
+          },
+          reviewKey,
+          repository,
+        )
+      : migrateLegacyStore(parsed, reviewKey, repository, model);
+  const backup = `${path}.v${parsed?.version === 2 ? 2 : 1}.bak`;
   if (!existsSync(backup)) {
     copyFileSync(path, backup);
     chmodSync(backup, 0o600);
@@ -241,13 +281,22 @@ export function saveStore(stateDir, document) {
   return updated;
 }
 
-export function createHumanNote(body, anchor, title = "") {
+export function createHumanNote(
+  body,
+  anchor,
+  title = "",
+  scope = "uncommitted",
+  scopeBase = null,
+) {
   const now = new Date().toISOString();
   return {
     id: randomUUID(),
     provenance: "human",
     title,
     body,
+    scope: normalizeScope(scope),
+    scopeBase:
+      normalizeScope(scope) === "last-turn" ? scopeBase : null,
     anchor,
     status: "anchored",
     createdAt: now,

@@ -1,10 +1,18 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstat, readFile, readlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import {
+  lstat,
+  mkdtemp,
+  readFile,
+  readlink,
+  rm,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { DIFF_LIMITS } from "./model.mjs";
 import { createUntrackedPatch, parseUnifiedDiff } from "./parse-diff.mjs";
+import { normalizeScope, scopeLabel } from "./scopes.mjs";
 
 const execFileAsync = promisify(execFile);
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -21,11 +29,30 @@ async function git(repo, args, options = {}) {
     ["-C", repo, "-c", "core.pager=cat", "-c", "color.ui=false", ...args],
     {
       encoding: options.encoding ?? "utf8",
-      env: GIT_ENV,
+      env: { ...GIT_ENV, ...options.env },
       maxBuffer: options.maxBuffer ?? 32 * 1024 * 1024,
     },
   );
   return result.stdout;
+}
+
+function parseDiffNameStatus(buffer) {
+  const entries = [];
+  const tokens = buffer.toString("utf8").split("\0");
+  let index = 0;
+  while (index < tokens.length) {
+    const status = tokens[index++];
+    if (!status) continue;
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const previousPath = tokens[index++];
+      const path = tokens[index++];
+      if (path) entries.push({ status, path, previousPath });
+    } else {
+      const path = tokens[index++];
+      if (path) entries.push({ status, path, previousPath: null });
+    }
+  }
+  return entries;
 }
 
 export function parsePorcelainStatus(buffer) {
@@ -72,16 +99,213 @@ export class GitSource {
   constructor(repo, limits = DIFF_LIMITS) {
     this.repo = repo;
     this.limits = limits;
+    this.scope = "uncommitted";
+    this.turnBaseline = null;
+    this.turnTarget = null;
+    this.turnTrackingError = null;
+    this.branchBase = null;
+    this.branchBaseLabel = null;
   }
 
-  async status() {
+  setScope(scope) {
+    this.scope = normalizeScope(scope);
+  }
+
+  setTurnBaseline(tree) {
+    this.turnBaseline = tree || null;
+  }
+
+  setTurnTarget(tree) {
+    this.turnTarget = tree || null;
+  }
+
+  setTurnTrackingError(error) {
+    this.turnTrackingError = error || null;
+  }
+
+  describeScope() {
+    if (this.scope === "branch") {
+      return this.branchBaseLabel
+        ? `2 branch · ${this.branchBaseLabel}`
+        : "2 branch";
+    }
+    if (this.scope === "last-turn") {
+      return this.turnBaseline && this.turnTarget
+        ? "3 last observed turn"
+        : "3 last turn · waiting";
+    }
+    return "1 working tree";
+  }
+
+  scopeIdentity() {
+    return this.scope === "last-turn" ? this.turnBaseline : null;
+  }
+
+  async resolveBranchBase() {
+    let originHead;
+    try {
+      originHead = (
+        await git(this.repo, [
+          "symbolic-ref",
+          "--quiet",
+          "--short",
+          "refs/remotes/origin/HEAD",
+        ])
+      ).trim();
+    } catch {
+      originHead = null;
+    }
+    const candidates = [
+      originHead,
+      "origin/main",
+      "main",
+      "origin/master",
+      "master",
+    ].filter(Boolean);
+    for (const candidate of candidates) {
+      try {
+        await git(this.repo, [
+          "rev-parse",
+          "--verify",
+          `${candidate}^{commit}`,
+        ]);
+        const mergeBase = (
+          await git(this.repo, ["merge-base", candidate, "HEAD"])
+        ).trim();
+        if (mergeBase) {
+          this.branchBase = mergeBase;
+          this.branchBaseLabel = candidate;
+          return mergeBase;
+        }
+      } catch {
+        // Try the next local base candidate.
+      }
+    }
+    this.branchBase = null;
+    this.branchBaseLabel = null;
+    throw new Error(
+      "No local base branch was found (tried origin/HEAD, main, and master).",
+    );
+  }
+
+  async snapshotWorktree() {
+    const directory = await mkdtemp(join(tmpdir(), "herdr-hunk-index-"));
+    const indexPath = join(directory, "index");
+    const env = { GIT_INDEX_FILE: indexPath };
+    try {
+      try {
+        await git(this.repo, ["read-tree", "HEAD"], { env });
+      } catch {
+        await git(this.repo, ["read-tree", "--empty"], { env });
+      }
+      await git(this.repo, ["add", "-A", "--", "."], { env });
+      return (await git(this.repo, ["write-tree"], { env })).trim();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  async readTreeRef(ref) {
+    try {
+      return (
+        await git(this.repo, ["rev-parse", "--verify", `${ref}^{tree}`])
+      ).trim();
+    } catch {
+      return null;
+    }
+  }
+
+  async writeTreeRef(ref, tree) {
+    await git(this.repo, ["update-ref", ref, tree]);
+  }
+
+  async deleteTreeRef(ref) {
+    try {
+      await git(this.repo, ["update-ref", "-d", ref]);
+    } catch {
+      // Deleting an absent candidate is already the desired state.
+    }
+  }
+
+  async comparison() {
+    if (this.scope === "last-turn") {
+      if (!this.turnBaseline || !this.turnTarget) {
+        return { base: null, target: null, entries: [], waiting: true };
+      }
+      const stdout = await git(
+        this.repo,
+        [
+          "diff",
+          "--name-status",
+          "-z",
+          "--find-renames=50%",
+          this.turnBaseline,
+          this.turnTarget,
+          "--",
+        ],
+        { encoding: "buffer", maxBuffer: this.limits.totalPatchBytes },
+      );
+      return {
+        base: this.turnBaseline,
+        target: this.turnTarget,
+        entries: parseDiffNameStatus(stdout),
+      };
+    }
+
+    if (this.scope === "branch") {
+      const base = await this.resolveBranchBase();
+      const stdout = await git(
+        this.repo,
+        [
+          "diff",
+          "--name-status",
+          "-z",
+          "--find-renames=50%",
+          base,
+          "--",
+        ],
+        { encoding: "buffer", maxBuffer: this.limits.totalPatchBytes },
+      );
+      const tracked = parseDiffNameStatus(stdout);
+      const porcelain = await this.porcelain();
+      return {
+        base,
+        target: null,
+        entries: [
+          ...tracked,
+          ...porcelain.entries.filter((entry) => entry.status === "untracked"),
+        ],
+        statusBuffer: porcelain.buffer,
+      };
+    }
+
+    const porcelain = await this.porcelain();
+    let base = "HEAD";
+    try {
+      await git(this.repo, ["rev-parse", "--verify", "HEAD"]);
+    } catch {
+      base = EMPTY_TREE;
+    }
+    return {
+      base,
+      target: null,
+      entries: porcelain.entries,
+      statusBuffer: porcelain.buffer,
+    };
+  }
+
+  async porcelain() {
     const stdout = await git(
       this.repo,
       ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
       { encoding: "buffer", maxBuffer: this.limits.totalPatchBytes },
     );
     const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
-    const entries = parsePorcelainStatus(buffer);
+    return { buffer, entries: parsePorcelainStatus(buffer) };
+  }
+
+  async workingStateFingerprint() {
+    const { buffer, entries } = await this.porcelain();
     const fingerprint = createHash("sha256");
     fingerprint.update(buffer);
     for (const entry of entries) {
@@ -118,20 +342,64 @@ export class GitSource {
     } catch {
       fingerprint.update("\0head:unborn");
     }
+    return fingerprint.digest("hex");
+  }
+
+  async status() {
+    const comparison = await this.comparison();
+    const buffer = comparison.statusBuffer ?? Buffer.alloc(0);
+    const entries = comparison.entries;
+    const fingerprint = createHash("sha256");
+    fingerprint.update(`${this.scope}\0${comparison.base ?? "none"}\0`);
+    fingerprint.update(`${comparison.target ?? "worktree"}\0`);
+    fingerprint.update(buffer);
+    if (this.scope !== "last-turn") {
+      for (const entry of entries) {
+        fingerprint.update(`\0${entry.path}\0`);
+        try {
+          const info = await lstat(resolve(this.repo, entry.path), {
+            bigint: true,
+          });
+          fingerprint.update(
+            `${info.size}:${info.mtimeNs}:${info.mode}:${info.ino}`,
+          );
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+          fingerprint.update("deleted");
+        }
+      }
+      try {
+        const indexPath = (
+          await git(this.repo, ["rev-parse", "--git-path", "index"])
+        ).trim();
+        const index = await lstat(resolve(this.repo, indexPath), {
+          bigint: true,
+        });
+        fingerprint.update(
+          `\0index:${index.size}:${index.mtimeNs}:${index.ino}`,
+        );
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+      try {
+        fingerprint.update(
+          `\0head:${(await git(this.repo, ["rev-parse", "--verify", "HEAD"])).trim()}`,
+        );
+      } catch {
+        fingerprint.update("\0head:unborn");
+      }
+    }
     return {
       fingerprint: fingerprint.digest("hex"),
       entries,
+      comparison,
     };
   }
 
   async refresh(generation = 1, knownStatus) {
     const status = knownStatus ?? await this.status();
-    let base = "HEAD";
-    try {
-      await git(this.repo, ["rev-parse", "--verify", "HEAD"]);
-    } catch {
-      base = EMPTY_TREE;
-    }
+    const comparison = status.comparison ?? await this.comparison();
+    const { base, target } = comparison;
 
     let patch = "";
     const oversized = [];
@@ -151,6 +419,7 @@ export class GitSource {
             "--src-prefix=a/",
             "--dst-prefix=b/",
             base,
+            ...(target ? [target] : []),
             "--",
             ...[entry.path, entry.previousPath].filter(Boolean),
           ],
@@ -272,6 +541,13 @@ export class GitSource {
         header: [`Diff skipped: ${entry.reason}.`],
       });
     }
-    return { ...model, fingerprint: status.fingerprint };
+    return {
+      ...model,
+      fingerprint: status.fingerprint,
+      scope: this.scope,
+      scopeBase: base,
+      scopeTarget: target,
+      waiting: Boolean(comparison.waiting),
+    };
   }
 }

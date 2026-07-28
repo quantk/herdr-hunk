@@ -21,7 +21,8 @@ working. The runtime no longer invokes or requires Hunk.
 
 ## Features
 
-- Shows staged, unstaged, and untracked changes together in a unified diff.
+- Switches between working-tree, branch, and last-observed-agent-turn diffs.
+- Shows staged, unstaged, and untracked changes together in working-tree mode.
 - Represents renames, deletions, binaries, submodules, mode-only changes,
   symlinks, and oversized files without mutating Git state.
 - Refreshes approximately once per second while preserving logical selection.
@@ -38,8 +39,10 @@ working. The runtime no longer invokes or requires Hunk.
   existing input and never pressing Enter.
 - Migrates legacy human Hunk notes once, preserving an untouched `.v1.bak`.
 
-Review actions are strictly read-only with respect to Git. They do not stage,
-unstage, revert, edit files, write refs, or create commits.
+Review actions never stage, unstage, revert, edit files, move branches, or
+create commits. Last-turn tracking snapshots through a throwaway index and
+writes only plugin-private refs under `refs/herdr-hunk/`; the real index,
+working tree, and branch refs are untouched.
 
 ## Requirements
 
@@ -48,7 +51,7 @@ unstage, revert, edit files, write refs, or create commits.
 | [Herdr](https://herdr.dev/) | 0.7.0+ | Plugin host and terminal workspace |
 | [Bun](https://bun.sh/) | 1.3.14 | Native OpenTUI review pane |
 | [Node.js](https://nodejs.org/) | 18+ | F6/F7 action processes and installation |
-| Git | Recent | Read-only working-tree acquisition |
+| Git | Recent | Diff acquisition and private last-turn snapshots |
 
 Supported platforms are Linux and macOS on x64 and arm64. Opening a review
 performs no network access: OpenTUI and every required grammar, query, and WASM
@@ -116,6 +119,7 @@ The review pane uses this stable key contract:
 
 | Keys | Action |
 | --- | --- |
+| `1` / `2` / `3` | Working tree / branch / last observed turn |
 | arrows or `j` / `k` | Previous/next diff row |
 | `Ctrl+U` / `Ctrl+D` | Move up/down by half a visible page |
 | `[` / `]` | Previous/next separated change block |
@@ -141,6 +145,26 @@ losing the current file and row. Saved comment text is rendered inline beneath
 its anchored diff range; `n` opens the complete saved-comments list, including
 stale notes.
 
+The active review scope is shown in the diff title and survives pane
+hide/show or reopen:
+
+- `1 working tree` compares `HEAD` with staged, unstaged, and untracked files.
+- `2 branch` compares the merge-base of the local base branch and `HEAD` with
+  the current working tree, so it includes committed branch work plus current
+  uncommitted and untracked changes. The base is resolved locally from
+  `origin/HEAD`, then `origin/main`, `main`, `origin/master`, or `master`;
+  review never fetches.
+- `3 last observed turn` compares snapshots taken at the beginning and end of
+  the exact associated agent's latest observed file-changing turn. It shows a
+  turn in progress and freezes when the agent returns to idle. Before a turn
+  start is observed, it displays a waiting state.
+
+Turn tracking samples `herdr agent list` once per refresh interval. A turn
+shorter than that interval can be missed, and concurrent human edits during
+the observed agent turn cannot be distinguished from agent edits. Commits
+during the turn remain visible because the comparison is between worktree
+trees rather than commit positions.
+
 Letter and bracket shortcuts follow the physical QWERTY key position when the
 terminal reports it and include a Russian-layout fallback. Text entered in the
 comment editor is not remapped. The `s` target matters only for unchanged
@@ -149,7 +173,9 @@ context lines, which exist on both sides of a diff; additions always target
 
 Only a nonempty comment explicitly saved with `Ctrl+S` reaches disk. Cancelled
 and unfinished comments cannot reach `F7`. Saved comments remain visible and
-editable if their original location becomes stale.
+editable if their original location becomes stale. Comments are isolated by
+scope; last-turn comments are additionally tied to that exact turn baseline.
+`F7` inserts only saved human comments from the currently active scope.
 
 Press `F7` from:
 
@@ -186,10 +212,11 @@ larger than 128 KiB fail before any agent input is changed.
 ## Persistence and recovery
 
 Each review is persisted atomically at
-`HERDR_PLUGIN_STATE_DIR/snapshots/<reviewKey>.json` with mode `0600`. The v2
+`HERDR_PLUGIN_STATE_DIR/snapshots/<reviewKey>.json` with mode `0600`. The v3
 store validates the exact review/repository association, repository-relative
-paths, old/new ranges, context hashes, timestamps, size limits, unique IDs,
-and hard-coded `human` provenance.
+paths, scope and turn identity, old/new ranges, context hashes, timestamps,
+size limits, unique IDs, and hard-coded `human` provenance. Existing v2
+snapshots migrate to working-tree scope with an untouched `.v2.bak`.
 
 If a pane is closed unexpectedly, reopening the same agent/repository reuses
 its `reviewKey` and restores saved comments and the last selected location.
@@ -209,6 +236,8 @@ non-text entries stay visible as metadata instead of freezing the pane.
 - If several reviews match, focus the intended review or source agent.
 - A saved note is required before `F7`; editor text alone is intentionally
   excluded.
+- `3 last observed turn` waits until this live review observes the associated
+  agent transition from idle to working and change at least one file.
 - Inspect recent failures with
   `herdr plugin log list --plugin quantick.hunk-review --limit 20`.
 - Validate shortcuts with `herdr config check`, then reload the server config.

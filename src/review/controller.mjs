@@ -1,8 +1,8 @@
 import {
   createAnchor,
   reanchorNote,
-  reanchorNotes,
 } from "./anchors.mjs";
+import { normalizeScope, noteMatchesScope, scopeLabel } from "./scopes.mjs";
 import { createHumanNote, saveStore } from "./store.mjs";
 
 export class ReviewController {
@@ -18,6 +18,8 @@ export class ReviewController {
     this.preferredSide = "new";
     this.sidebarVisible = store.ui?.sidebarVisible ?? null;
     this.sidebarWidth = store.ui?.sidebarWidth ?? 30;
+    this.scope = normalizeScope(store.ui?.scope);
+    this.source.setScope?.(this.scope);
     this.editor = null;
     this.refreshing = false;
     this.refreshQueued = false;
@@ -30,6 +32,16 @@ export class ReviewController {
 
   get row() {
     return this.file?.rows[this.rowIndex];
+  }
+
+  get notes() {
+    return this.store.notes.filter((note) =>
+      noteMatchesScope(
+        note,
+        this.scope,
+        this.source.scopeIdentity?.() ?? null,
+      ),
+    );
   }
 
   async refresh({ force = false } = {}) {
@@ -46,7 +58,13 @@ export class ReviewController {
     try {
       const status = await this.source.status();
       if (!force && status.fingerprint === this.model.fingerprint) {
-        this.status = "No working-tree changes since last refresh.";
+        this.status =
+          this.scope === "last-turn" && this.source.turnTrackingError
+            ? `Last-turn tracking unavailable: ${this.source.turnTrackingError}`
+            : this.scope === "last-turn" &&
+                (!this.source.turnBaseline || !this.source.turnTarget)
+              ? "Waiting for the next observed agent turn."
+              : `No ${scopeLabel(this.scope)} changes since last refresh.`;
         return false;
       }
       const next = await this.source.refresh(
@@ -64,16 +82,21 @@ export class ReviewController {
       );
       this.store = {
         ...this.store,
-        notes: reanchorNotes(this.store.notes, next),
-        ui: {
-          filePath: this.file?.path ?? null,
-          rowId: this.row?.id ?? null,
-          sidebarVisible: this.sidebarVisible,
-          sidebarWidth: this.sidebarWidth,
-        },
+        notes: this.store.notes.map((note) =>
+          noteMatchesScope(
+            note,
+            this.scope,
+            this.source.scopeIdentity?.() ?? null,
+          )
+            ? reanchorNote(note, next)
+            : note
+        ),
+        ui: this.uiState(),
       };
       this.store = saveStore(this.stateDir, this.store);
-      this.status = `${next.files.length} changed file${next.files.length === 1 ? "" : "s"}.`;
+      this.status = next.waiting
+        ? "Waiting for the next observed agent turn."
+        : `${scopeLabel(this.scope)}: ${next.files.length} changed file${next.files.length === 1 ? "" : "s"}.`;
       return true;
     } catch (error) {
       this.status = `Refresh failed: ${error.message}`;
@@ -92,6 +115,28 @@ export class ReviewController {
     if (!count) return;
     this.rowIndex = Math.max(0, Math.min(count - 1, this.rowIndex + delta));
     this.persistUI();
+  }
+
+  async switchScope(scope) {
+    const nextScope = normalizeScope(scope);
+    if (nextScope === this.scope) return false;
+    if (this.editor) {
+      this.status = "Save or cancel the active comment before switching scope.";
+      return false;
+    }
+    this.scope = nextScope;
+    this.source.setScope?.(nextScope);
+    this.fileIndex = 0;
+    this.rowIndex = 0;
+    this.rangeStart = null;
+    this.rangeEnd = null;
+    this.model = {
+      generation: this.model.generation,
+      files: [],
+      fingerprint: null,
+    };
+    this.persistUI();
+    return this.refresh({ force: true });
   }
 
   moveFile(delta) {
@@ -225,7 +270,13 @@ export class ReviewController {
     } else {
       notes.push(
         reanchorNote(
-          createHumanNote(body, this.editor.anchor),
+          createHumanNote(
+            body,
+            this.editor.anchor,
+            "",
+            this.scope,
+            this.source.scopeIdentity?.() ?? null,
+          ),
           this.model,
         ),
       );
@@ -244,15 +295,21 @@ export class ReviewController {
   }
 
   persistUI() {
-    if (!this.store || !this.file) return;
+    if (!this.store) return;
     this.store = saveStore(this.stateDir, {
       ...this.store,
-      ui: {
-        filePath: this.file.path,
-        rowId: this.row?.id ?? null,
-        sidebarVisible: this.sidebarVisible,
-        sidebarWidth: this.sidebarWidth,
-      },
+      ui: this.uiState(),
     });
+  }
+
+  uiState() {
+    return {
+      filePath: this.file?.path ?? null,
+      rowId: this.row?.id ?? null,
+      sidebarVisible: this.sidebarVisible,
+      sidebarWidth: this.sidebarWidth,
+      scope: this.scope,
+      scopeBase: this.source.scopeIdentity?.() ?? null,
+    };
   }
 }

@@ -7,6 +7,7 @@ import {
 } from "@opentui/core";
 import { detectFiletype } from "./languages.mjs";
 import { commentSide, terminalSafeText } from "./model.mjs";
+import { scopeLabel } from "./scopes.mjs";
 import { shortcutName } from "./shortcuts.mjs";
 
 const COLORS = {
@@ -55,7 +56,7 @@ function noteAtRow(controller) {
   const row = controller.row;
   const file = controller.file;
   if (!row || !file) return undefined;
-  return controller.store.notes.find((note) => {
+  return controller.notes.find((note) => {
     if (
       note.status !== "anchored" ||
       (note.anchor.path !== file.path &&
@@ -74,7 +75,7 @@ function noteAtRow(controller) {
 }
 
 function notesEndingAtRow(controller, file, row) {
-  return controller.store.notes.filter((note) => {
+  return controller.notes.filter((note) => {
     if (
       note.status !== "anchored" ||
       (note.anchor.path !== file.path &&
@@ -222,7 +223,7 @@ export class ReviewUI {
           this.jumpToSelectedNote();
         } else {
           const delta = name === "up" || name === "k" ? -1 : 1;
-          const count = this.controller.store.notes.length;
+          const count = this.controller.notes.length;
           if (count) this.notesIndex = (this.notesIndex + delta + count) % count;
         }
         this.render();
@@ -231,6 +232,17 @@ export class ReviewUI {
       if (key.ctrl && (name === "u" || name === "d")) {
         key.preventDefault();
         this.moveHalfPage(name === "u" ? -1 : 1);
+        this.render();
+        return;
+      }
+      const scope = {
+        1: "uncommitted",
+        2: "branch",
+        3: "last-turn",
+      }[name];
+      if (scope) {
+        key.preventDefault();
+        this.controller.switchScope(scope).finally(() => this.render());
         this.render();
         return;
       }
@@ -324,7 +336,7 @@ export class ReviewUI {
   }
 
   selectedNote() {
-    const notes = this.controller.store.notes;
+    const notes = this.controller.notes;
     if (!notes.length) return undefined;
     this.notesIndex = Math.min(this.notesIndex, notes.length - 1);
     return notes[this.notesIndex];
@@ -360,6 +372,8 @@ export class ReviewUI {
     const sidebarVisible =
       this.controller.sidebarVisible ?? !narrow;
     const sidebarWidth = this.clampedSidebarWidth();
+    this.diff.title =
+      ` ${this.controller.source.describeScope?.() ?? this.controller.scope} `;
     this.files.visible = sidebarVisible;
     this.files.width = sidebarVisible ? (narrow ? "100%" : sidebarWidth) : 0;
     this.splitter.visible = sidebarVisible && !narrow;
@@ -434,7 +448,7 @@ export class ReviewUI {
 
   renderFiles() {
     const notesByPath = new Map();
-    for (const note of this.controller.store.notes) {
+    for (const note of this.controller.notes) {
       notesByPath.set(note.anchor.path, (notesByPath.get(note.anchor.path) ?? 0) + 1);
     }
     this.controller.model.files.forEach((file, index) => {
@@ -467,7 +481,15 @@ export class ReviewUI {
   async renderDiff(version) {
     const file = this.controller.file;
     if (!file) {
-      this.diff.add(text(this.ctx, "empty", "Working tree is clean."));
+      this.diff.add(
+        text(
+          this.ctx,
+          "empty",
+          this.controller.model.waiting
+            ? "Waiting for the next observed agent turn."
+            : `No changes in ${scopeLabel(this.controller.scope)} scope.`,
+        ),
+      );
       return;
     }
     if (file.kind !== "text") {
@@ -517,7 +539,7 @@ export class ReviewUI {
               this.controller.rangeStart,
               this.controller.rangeEnd ?? this.controller.rowIndex,
             ));
-        const saved = this.controller.store.notes.some((note) => {
+        const saved = this.controller.notes.some((note) => {
           const line = note.anchor.side === "old" ? row.oldLine : row.newLine;
           return (
             note.anchor.path === file.path &&
@@ -647,12 +669,12 @@ export class ReviewUI {
         text(
           this.ctx,
           "help",
-          `↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files · b sidebar · v range · s context target · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ?/F1 help · Esc cancel · mouse click/Shift-click/drag`,
+          `1 working · 2 branch · 3 last turn · ↑/k ↓/j rows · Ctrl+U/D half-page · [ ] change blocks · { } files\nb sidebar · v range · s context target · c comment · e edit · n notes · d d delete · r refresh · Esc cancel`,
           { height: 2 },
         ),
       );
     } else if (this.showNotes) {
-      const allLines = this.controller.store.notes.map(
+      const allLines = this.controller.notes.map(
         (note, index) =>
           `${index === this.notesIndex ? "›" : " "} ${index + 1}. ${note.status === "stale" ? "⚠ stale " : ""}${note.anchor.path}:${note.anchor.startLine}-${note.anchor.endLine} ${note.body.split("\n")[0]}`,
       );

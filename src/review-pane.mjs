@@ -3,15 +3,19 @@ import { reanchorNotes } from "./review/anchors.mjs";
 import { ReviewController } from "./review/controller.mjs";
 import { GitSource } from "./review/git-source.mjs";
 import { createHighlighter } from "./review/highlighting.mjs";
+import { noteMatchesScope, scopeLabel } from "./review/scopes.mjs";
 import { shortcutName } from "./review/shortcuts.mjs";
 import { readStore, saveStore } from "./review/store.mjs";
+import { AgentTurnTracker } from "./review/turn-tracker.mjs";
 import { ReviewUI } from "./review/ui.mjs";
 
 const repo = process.env.HERDR_HUNK_REPO;
 const reviewKey = process.env.HERDR_HUNK_REVIEW_KEY;
 const stateDir = process.env.HERDR_PLUGIN_STATE_DIR;
+const agentPaneId = process.env.HERDR_HUNK_AGENT_PANE;
+const herdr = process.env.HERDR_BIN_PATH ?? "herdr";
 
-if (!repo || !reviewKey || !stateDir) {
+if (!repo || !reviewKey || !stateDir || !agentPaneId) {
   process.stderr.write(
     "Review: missing launch context. Open this pane through the “Review changes” action.\n",
   );
@@ -48,16 +52,38 @@ function requestShutdown() {
 
 async function main() {
   const source = new GitSource(repo);
-  const initialModel = await source.refresh(1);
-  let store = readStore(stateDir, reviewKey, repo, { model: initialModel });
-  const notes = reanchorNotes(store.notes, initialModel);
+  const tracker = new AgentTurnTracker({
+    source,
+    herdr,
+    agentPaneId,
+    reviewKey,
+  });
+  await tracker.initialize();
+  const bootstrapModel = await source.refresh(1);
+  let store = readStore(stateDir, reviewKey, repo, { model: bootstrapModel });
+  source.setScope(store.ui.scope);
+  const initialModel =
+    store.ui.scope === "uncommitted"
+      ? bootstrapModel
+      : await source.refresh(1);
+  const notes = store.notes.map((note) =>
+    noteMatchesScope(
+      note,
+      store.ui.scope,
+      source.scopeIdentity(),
+    )
+      ? reanchorNotes([note], initialModel)[0]
+      : note
+  );
   if (JSON.stringify(notes) !== JSON.stringify(store.notes)) {
     store = saveStore(stateDir, { ...store, notes });
   }
 
   const controller = new ReviewController({ source, store, stateDir });
   controller.model = initialModel;
-  controller.status = `${initialModel.files.length} changed file${initialModel.files.length === 1 ? "" : "s"}.`;
+  controller.status = initialModel.waiting
+    ? "Waiting for the next observed agent turn."
+    : `${scopeLabel(controller.scope)}: ${initialModel.files.length} changed file${initialModel.files.length === 1 ? "" : "s"}.`;
   const storedFile = initialModel.files.findIndex(
     (file) => file.path === store.ui?.filePath,
   );
@@ -92,8 +118,12 @@ async function main() {
   renderer.start();
 
   timer = setInterval(async () => {
+    const previousStatus = controller.status;
+    const baselineChanged = await tracker.sample();
     const changed = await controller.refresh();
-    if (changed) await ui.render();
+    if (changed || baselineChanged || controller.status !== previousStatus) {
+      await ui.render();
+    }
   }, 1_000);
   timer.unref();
 }
