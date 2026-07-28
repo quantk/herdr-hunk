@@ -4,7 +4,7 @@ These instructions apply to every file in this repository.
 
 ## Project
 
-Herdr Hunk Review is a Herdr workflow plugin that:
+Herdr Review is a Herdr workflow plugin that:
 
 - opens a live Hunk diff beside a detected coding agent;
 - keeps one review associated with its source agent and Git repository;

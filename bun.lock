@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "herdr-hunk",
+      "name": "herdr-review",
       "dependencies": {
         "@opentui/core": "0.4.5",
       },

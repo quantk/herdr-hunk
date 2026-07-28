@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quantk/herdr-hunk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/quantk/herdr-hunk/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/quantk/herdr-hunk/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/quantk/herdr-hunk"></a>
+  <a href="https://github.com/quantk/herdr-review/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/quantk/herdr-review/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/quantk/herdr-review/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/quantk/herdr-review"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Herdr 0.7.0 or newer" src="https://img.shields.io/badge/Herdr-%E2%89%A5%200.7.0-6c5ce7">
   <img alt="Bun 1.3.14" src="https://img.shields.io/badge/Bun-1.3.14-f9f1e1">
@@ -15,8 +15,8 @@
   <img alt="Linux and macOS" src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-4b5563">
 </p>
 
-The repository and plugin ID retain the legacy `herdr-hunk` /
-`quantick.hunk-review` names so existing installations and keybindings keep
+The repository is `herdr-review`. The plugin ID retains the legacy
+`quantick.hunk-review` name so existing installations and keybindings keep
 working. The runtime no longer invokes or requires Hunk.
 
 ## Features
@@ -62,7 +62,7 @@ asset are installed or bundled ahead of time.
 Install Bun, Node.js, Git, and Herdr first, then:
 
 ```sh
-herdr plugin install quantk/herdr-hunk
+herdr plugin install quantk/herdr-review
 herdr plugin list
 herdr plugin action list --plugin quantick.hunk-review
 ```
@@ -74,8 +74,8 @@ dependency install aborts cleanly.
 For a local checkout:
 
 ```sh
-git clone https://github.com/quantk/herdr-hunk.git
-cd herdr-hunk
+git clone https://github.com/quantk/herdr-review.git
+cd herdr-review
 npm ci
 herdr plugin link "$PWD" --enabled
 ```

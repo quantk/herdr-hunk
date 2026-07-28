@@ -44,7 +44,7 @@ approval.
 For GitHub:
 
 ```sh
-herdr plugin install quantk/herdr-hunk
+herdr plugin install quantk/herdr-review
 ```
 
 Herdr runs the reviewed manifest build command (`npm ci --omit=dev`) before it
@@ -54,7 +54,7 @@ failed.
 For a local checkout:
 
 ```sh
-cd "/absolute/path/to/herdr-hunk"
+cd "/absolute/path/to/herdr-review"
 npm ci
 herdr plugin link "$PWD" --enabled
 ```
