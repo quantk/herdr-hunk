@@ -120,6 +120,7 @@ export class ReviewUI {
   bindKeys() {
     this.renderer.keyInput.on("keypress", (key) => {
       if (key.eventType === "release") return;
+      if (key.ctrl && key.name === "c") return;
       if (this.controller.editor) {
         if (key.name === "escape") {
           key.preventDefault();

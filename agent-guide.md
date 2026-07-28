@@ -115,7 +115,8 @@ Fix only problems introduced by this setup. An attached client may need
 
 The plugin never submits, never clears existing agent input, excludes
 unfinished comments, and refuses ambiguous review routing. Press `?` inside
-the pane for the full keyboard/mouse reference.
+the pane for the full keyboard/mouse reference. `Ctrl+C` closes the review
+pane cleanly; `F6` can reopen it with saved comments intact.
 
 ## 6. Report
 

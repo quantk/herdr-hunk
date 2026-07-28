@@ -127,6 +127,7 @@ The review pane uses this stable key contract:
 | `?` | Show/hide help |
 | `Esc` | Cancel editor, range, confirmation, or overlay |
 | `Ctrl+S` | Save the active multiline comment |
+| `Ctrl+C` | Close the review pane and restore the terminal |
 
 Mouse wheel scrolling, file and row clicks, Shift-click range extension, drag
 selection, and editor cursor placement are supported. Narrow panes collapse

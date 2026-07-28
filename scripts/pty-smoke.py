@@ -87,7 +87,10 @@ def run_signal_case(stop_signal: signal.Signals) -> None:
                 + output[-1000:].decode("utf8", "replace")
             )
 
-        os.killpg(process.pid, stop_signal)
+        if stop_signal == signal.SIGINT:
+            os.write(master, b"\x03")
+        else:
+            os.killpg(process.pid, stop_signal)
         try:
             exit_code = process.wait(timeout=10)
         except subprocess.TimeoutExpired:

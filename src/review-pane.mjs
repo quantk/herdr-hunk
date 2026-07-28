@@ -38,6 +38,13 @@ async function shutdown(exitCode = 0) {
   process.exit(exitCode);
 }
 
+function requestShutdown() {
+  shutdown(0).catch((error) => {
+    process.stderr.write(`Review: cleanup failed: ${error.message}\n`);
+    process.exit(1);
+  });
+}
+
 async function main() {
   const source = new GitSource(repo);
   const initialModel = await source.refresh(1);
@@ -69,6 +76,12 @@ async function main() {
     enableMouseMovement: true,
     screenMode: "alternate-screen",
   });
+  renderer.keyInput.on("keypress", (key) => {
+    if (key.eventType !== "release" && key.ctrl && key.name === "c") {
+      key.preventDefault();
+      requestShutdown();
+    }
+  });
   const ui = new ReviewUI(renderer, controller, highlighter);
   await ui.render();
   renderer.start();
@@ -81,12 +94,7 @@ async function main() {
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    shutdown(0).catch((error) => {
-      process.stderr.write(`Review: cleanup failed: ${error.message}\n`);
-      process.exitCode = 1;
-    });
-  });
+  process.on(signal, requestShutdown);
 }
 
 process.on("uncaughtException", async (error) => {
