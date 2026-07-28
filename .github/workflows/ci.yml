@@ -85,4 +85,10 @@ jobs:
           cd "$RUNNER_TEMP/plugin"
           npm install --omit=dev
           bun run scripts/smoke-installed.mjs
+
+      - name: Smoke-test PTY terminal restoration
+        if: startsWith(matrix.os, 'ubuntu-')
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/plugin"
           python3 scripts/pty-smoke.py
