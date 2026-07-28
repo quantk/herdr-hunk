@@ -153,6 +153,7 @@ The review pane uses this stable key contract:
 | `[` / `]` | Previous/next separated change block |
 | `{` / `}` | Previous/next file |
 | `b` | Show/hide the file sidebar |
+| `w` | Toggle wrapping of long diff rows |
 | `v` | Begin/end contiguous range selection |
 | `s` | Choose old/new target for an unchanged context line |
 | `c` | Comment on the selected line/range |
@@ -171,7 +172,8 @@ divider to resize the file sidebar; its width is restored with the review.
 Narrow panes initially collapse the file list; `b` shows or hides it without
 losing the current file and row. Saved comment text is rendered inline beneath
 its anchored diff range; `n` opens the complete saved-comments list, including
-stale notes.
+stale notes. Press `w` to wrap long diff rows to the visible diff width; the
+choice is restored with the review.
 
 The active review scope is shown in the diff title and survives pane
 hide/show or reopen:

@@ -121,6 +121,10 @@ export function validateStore(document, reviewKey, repository) {
         document.ui.sidebarWidth <= 80),
     "invalid sidebar width",
   );
+  assert(
+    document.ui.rowWrap == null || typeof document.ui.rowWrap === "boolean",
+    "invalid row-wrap state",
+  );
   assert(REVIEW_SCOPES.includes(document.ui.scope), "invalid review scope");
   assert(
     document.ui.scopeBase == null ||
@@ -149,6 +153,7 @@ export function emptyStore(reviewKey, repository) {
       rowId: null,
       sidebarVisible: null,
       sidebarWidth: null,
+      rowWrap: false,
       scope: "uncommitted",
       scopeBase: null,
     },
@@ -215,6 +220,7 @@ export function migrateLegacyStore(legacy, reviewKey, repository, model) {
         rowId: null,
         sidebarVisible: null,
         sidebarWidth: null,
+        rowWrap: false,
         scope: "uncommitted",
         scopeBase: null,
       },

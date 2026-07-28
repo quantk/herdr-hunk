@@ -18,6 +18,7 @@ export class ReviewController {
     this.preferredSide = "new";
     this.sidebarVisible = store.ui?.sidebarVisible ?? null;
     this.sidebarWidth = store.ui?.sidebarWidth ?? 30;
+    this.rowWrap = store.ui?.rowWrap ?? false;
     this.scope = normalizeScope(store.ui?.scope);
     this.source.setScope?.(this.scope);
     this.editor = null;
@@ -170,6 +171,12 @@ export class ReviewController {
     if (persist) this.persistUI();
   }
 
+  toggleRowWrap() {
+    this.rowWrap = !this.rowWrap;
+    this.status = `Diff row wrapping ${this.rowWrap ? "enabled" : "disabled"}.`;
+    this.persistUI();
+  }
+
   moveHunk(delta) {
     const hunks = this.file?.hunks ?? [];
     if (!hunks.length) return;
@@ -308,6 +315,7 @@ export class ReviewController {
       rowId: this.row?.id ?? null,
       sidebarVisible: this.sidebarVisible,
       sidebarWidth: this.sidebarWidth,
+      rowWrap: this.rowWrap,
       scope: this.scope,
       scopeBase: this.source.scopeIdentity?.() ?? null,
     };
