@@ -25,6 +25,7 @@ herdr --version
 bun --version
 node --version
 git --version
+herdr plugin list --json
 ```
 
 Requirements:
@@ -39,9 +40,14 @@ If a prerequisite is missing or incompatible, stop and explain exactly what is
 needed. Do not install or upgrade it through an OS package manager without
 approval.
 
+Record any existing entry whose plugin ID is `quantick.hunk-review`, including
+its version, enabled state, and local or GitHub source. Read
+`~/.config/herdr/config.toml` when it exists and locate every assignment for
+`f6` and `f7` before changing either the plugin or its shortcuts.
+
 ## 2. Install
 
-For GitHub:
+If `quantick.hunk-review` is not installed, install it from GitHub:
 
 ```sh
 herdr plugin install quantk/herdr-review
@@ -51,7 +57,7 @@ Herdr runs the reviewed manifest build command (`npm ci --omit=dev`) before it
 registers the plugin. Do not register a checkout whose dependency install
 failed.
 
-For a local checkout:
+For a new local checkout:
 
 ```sh
 cd "/absolute/path/to/herdr-review"
@@ -61,6 +67,21 @@ herdr plugin link "$PWD" --enabled
 
 Resolve the checkout path; never invent it. `plugin link` does not run build
 commands, so install dependencies first.
+
+If the plugin is already installed, do not install or link a second copy.
+Compare its source and version with the current repository manifest. Enable an
+otherwise current disabled installation with:
+
+```sh
+herdr plugin enable quantick.hunk-review
+```
+
+The supported Herdr CLI has no separate `plugin update` command. Replacing an
+older GitHub installation or switching between GitHub and local sources may
+require `plugin uninstall` or `plugin unlink`, which can affect existing plugin
+state. Explain the detected situation and get the user's approval before
+replacing it; after approval, install or link the current source and verify that
+the same plugin ID is registered only once.
 
 Verify:
 

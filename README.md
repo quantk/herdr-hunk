@@ -19,6 +19,34 @@ The repository is `herdr-review`. The plugin ID retains the legacy
 `quantick.hunk-review` name so existing installations and keybindings keep
 working. The runtime no longer invokes or requires Hunk.
 
+## Agent-assisted setup
+
+**Recommended:** let a coding agent inspect the machine, install or link the
+plugin, preserve the existing Herdr configuration, add non-conflicting
+shortcuts, and validate the result.
+
+Paste this prompt into Codex, Claude, or another agent with terminal access:
+
+```text
+Set up Herdr Native Review on this machine.
+
+Read and follow this guide first:
+https://raw.githubusercontent.com/quantk/herdr-review/main/agent-guide.md
+
+Inspect the existing environment, installed Herdr plugins, and Herdr config
+before making changes. Preserve unrelated settings, avoid duplicate plugin
+installations and keybindings, validate the final config, reload it, and report
+exactly what changed.
+```
+
+The guide requires the setup agent to ask before installing OS-level
+dependencies or replacing conflicting keys or plugin installations. It also
+prevents the agent from opening a test review or inserting test text into an
+agent that is already running.
+
+Prefer to perform each step manually? Continue with the requirements and
+installation below.
+
 ## Features
 
 - Switches between working-tree, branch, and last-observed-agent-turn diffs.
