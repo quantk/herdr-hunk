@@ -64,6 +64,7 @@ test("controller keeps one active refresh, queues only the latest, and persists 
   const stored = readStore(stateDir, "review-controller", "/repo");
   assert.equal(stored.ui.filePath, "a.js");
   assert.equal(stored.ui.rowId, controller.row.id);
+  assert.equal(stored.ui.sidebarVisible, null);
 });
 
 test("controller finalizes a contiguous same-side range and keeps drafts off disk until save", () => {
@@ -119,4 +120,29 @@ test("controller can anchor an unchanged context line on either side", () => {
   controller.toggleSide();
   controller.beginComment();
   assert.equal(controller.editor.anchor.side, "new");
+});
+
+test("controller toggles and persists the sidebar without losing file state", () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "herdr-controller-sidebar-"));
+  const controller = new ReviewController({
+    source: {},
+    stateDir,
+    store: emptyStore("review-sidebar", "/repo"),
+  });
+  controller.model = model(1);
+
+  controller.toggleSidebar(true);
+  assert.equal(controller.sidebarVisible, false);
+  assert.equal(controller.file.path, "a.js");
+  assert.equal(
+    readStore(stateDir, "review-sidebar", "/repo").ui.sidebarVisible,
+    false,
+  );
+
+  controller.toggleSidebar(true);
+  assert.equal(controller.sidebarVisible, true);
+  assert.equal(
+    readStore(stateDir, "review-sidebar", "/repo").ui.sidebarVisible,
+    true,
+  );
 });

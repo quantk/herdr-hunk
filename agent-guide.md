@@ -107,16 +107,18 @@ Fix only problems introduced by this setup. An attached client may need
 
 1. Focus a detected coding agent in a Git repository.
 2. Press `F6` to open the native working-tree review.
-3. Navigate with `j`/`k`, `[`/`]`, and `{`/`}`.
+3. Navigate with `j`/`k`, `[`/`]`, and `{`/`}`; toggle the file sidebar with
+   `b`.
 4. Select a line/range with `v`, press `c`, and save with `Ctrl+S`.
 5. Press `F6` to hide/restore the same live pane.
 6. Press `F7` to insert validated saved comments into the exact source agent.
 7. Review or edit the draft, then press Enter manually.
 
 The plugin never submits, never clears existing agent input, excludes
-unfinished comments, and refuses ambiguous review routing. Press `?` inside
-the pane for the full keyboard/mouse reference. `Ctrl+C` closes the review
-pane cleanly; `F6` can reopen it with saved comments intact.
+unfinished comments, and refuses ambiguous review routing. Saved comments are
+shown inline beneath their diff range. Press `?` inside the pane for the full
+keyboard/mouse reference. `Ctrl+C` closes the review pane cleanly; `F6` can
+reopen it with saved comments and sidebar visibility intact.
 
 ## 6. Report
 

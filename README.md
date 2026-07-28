@@ -29,6 +29,7 @@ working. The runtime no longer invokes or requires Hunk.
 - Highlights JavaScript, JSX, TypeScript, TSX, JSON, Markdown, HTML, CSS,
   shell, Python, Go, Rust, YAML, and TOML with bundled Tree-sitter assets.
 - Saves only explicit human comments; unfinished editor text stays in memory.
+- Shows saved comment text inline beneath its anchored diff range.
 - Re-anchors comments deterministically after refresh or marks them stale
   without guessing.
 - Hides and restores the same live pane with `F6`.
@@ -117,6 +118,7 @@ The review pane uses this stable key contract:
 | arrows or `j` / `k` | Previous/next diff row |
 | `[` / `]` | Previous/next hunk |
 | `{` / `}` | Previous/next file |
+| `b` | Show/hide the file sidebar |
 | `v` | Begin/end contiguous range selection |
 | `s` | Prefer old/new side when commenting on context |
 | `c` | Comment on the selected line/range |
@@ -130,8 +132,10 @@ The review pane uses this stable key contract:
 | `Ctrl+C` | Close the review pane and restore the terminal |
 
 Mouse wheel scrolling, file and row clicks, Shift-click range extension, drag
-selection, and editor cursor placement are supported. Narrow panes collapse
-the file list; `n` reveals it as the compact overlay area.
+selection, and editor cursor placement are supported. Narrow panes initially
+collapse the file list; `b` shows or hides it without losing the current file
+and row. Saved comment text is rendered inline beneath its anchored diff
+range; `n` opens the complete saved-comments list, including stale notes.
 
 Only a nonempty comment explicitly saved with `Ctrl+S` reaches disk. Cancelled
 and unfinished comments cannot reach `F7`. Saved comments remain visible and

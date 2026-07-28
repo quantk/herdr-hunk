@@ -103,6 +103,11 @@ export function validateStore(document, reviewKey, repository) {
     document.ui.rowId == null || typeof document.ui.rowId === "string",
     "invalid UI row ID",
   );
+  assert(
+    document.ui.sidebarVisible == null ||
+      typeof document.ui.sidebarVisible === "boolean",
+    "invalid sidebar visibility",
+  );
   assert(Array.isArray(document.notes), "notes must be an array");
   assert(document.notes.length <= MAX_NOTES, `too many notes (limit ${MAX_NOTES})`);
   const ids = new Set();
@@ -120,7 +125,7 @@ export function emptyStore(reviewKey, repository) {
     reviewKey,
     repository,
     updatedAt: new Date(0).toISOString(),
-    ui: { filePath: null, rowId: null },
+    ui: { filePath: null, rowId: null, sidebarVisible: null },
     notes: [],
   };
 }
@@ -177,7 +182,7 @@ export function migrateLegacyStore(legacy, reviewKey, repository, model) {
       reviewKey,
       repository,
       updatedAt: now,
-      ui: { filePath: null, rowId: null },
+      ui: { filePath: null, rowId: null, sidebarVisible: null },
       notes: anchored,
     },
     reviewKey,

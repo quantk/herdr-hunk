@@ -49,7 +49,13 @@ function noteAtRow(controller) {
   const file = controller.file;
   if (!row || !file) return undefined;
   return controller.store.notes.find((note) => {
-    if (note.anchor.path !== file.path) return false;
+    if (
+      note.status !== "anchored" ||
+      (note.anchor.path !== file.path &&
+        note.anchor.path !== file.previousPath)
+    ) {
+      return false;
+    }
     const line =
       note.anchor.side === "old" ? row.oldLine : row.newLine;
     return (
@@ -57,6 +63,20 @@ function noteAtRow(controller) {
       line >= note.anchor.startLine &&
       line <= note.anchor.endLine
     );
+  });
+}
+
+function notesEndingAtRow(controller, file, row) {
+  return controller.store.notes.filter((note) => {
+    if (
+      note.status !== "anchored" ||
+      (note.anchor.path !== file.path &&
+        note.anchor.path !== file.previousPath)
+    ) {
+      return false;
+    }
+    const line = note.anchor.side === "old" ? row.oldLine : row.newLine;
+    return line === note.anchor.endLine;
   });
 }
 
@@ -139,6 +159,7 @@ export class ReviewUI {
       }
 
       const name = key.name;
+      const defaultSidebarVisible = this.renderer.terminalWidth >= 72;
       if (this.showNotes && ["up", "k", "down", "j", "return"].includes(name)) {
         key.preventDefault();
         if (name === "return") {
@@ -180,6 +201,8 @@ export class ReviewUI {
                             }
                           : name === "d"
                             ? () => this.confirmDelete()
+                            : name === "b"
+                              ? () => this.controller.toggleSidebar(defaultSidebarVisible)
                             : name === "n"
                               ? () => {
                                   this.showNotes = !this.showNotes;
@@ -267,10 +290,12 @@ export class ReviewUI {
   async render() {
     const version = ++this.renderVersion;
     const narrow = this.renderer.terminalWidth < 72;
-    this.files.visible = !narrow || this.showNotes;
-    this.files.width = narrow ? "100%" : 30;
+    const sidebarVisible =
+      this.controller.sidebarVisible ?? !narrow;
+    this.files.visible = sidebarVisible;
+    this.files.width = sidebarVisible ? (narrow ? "100%" : 30) : 0;
     this.main.flexDirection = narrow ? "column" : "row";
-    if (narrow) this.files.height = this.showNotes ? "45%" : 0;
+    if (narrow) this.files.height = sidebarVisible ? "45%" : 0;
 
     clear(this.files);
     clear(this.diff);
@@ -302,9 +327,9 @@ export class ReviewUI {
         {
           backgroundColor: selected ? COLORS.selected : undefined,
           fg: selected ? COLORS.accent : COLORS.context,
+          selectable: false,
           onMouseDown: () => {
-            this.controller.fileIndex = index;
-            this.controller.rowIndex = 0;
+            this.controller.selectFile(index);
             this.render();
           },
         },
@@ -433,6 +458,27 @@ export class ReviewUI {
           }),
         );
         this.diff.add(container);
+        for (const note of notesEndingAtRow(this.controller, file, row)) {
+          const body = terminalSafeText(note.body);
+          const bodyHeight = Math.max(1, body.split("\n").length);
+          const comment = new BoxRenderable(this.ctx, {
+            id: `note:${note.id}`,
+            height: bodyHeight + 2,
+            marginLeft: 12,
+            border: true,
+            borderColor: COLORS.accent,
+            title: " saved comment ",
+            titleColor: COLORS.accent,
+            flexDirection: "column",
+          });
+          comment.add(
+            text(this.ctx, `note-body:${note.id}`, body, {
+              height: bodyHeight,
+              fg: COLORS.context,
+            }),
+          );
+          this.diff.add(comment);
+        }
       }
     }
     const selectedId = this.controller.row?.id;
@@ -477,7 +523,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "help",
-          `↑/k ↓/j rows · [ ] hunks · { } files · v range · s side (${this.controller.preferredSide}) · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ? help · Esc cancel · mouse click/Shift-click/drag`,
+          `↑/k ↓/j rows · [ ] hunks · { } files · b sidebar · v range · s side (${this.controller.preferredSide}) · c comment · e edit\nn notes (↑/↓, Enter jump) · d d delete · r refresh · ? help · Esc cancel · mouse click/Shift-click/drag`,
           { height: 2 },
         ),
       );
@@ -504,7 +550,7 @@ export class ReviewUI {
         text(
           this.ctx,
           "status-text",
-          `${this.controller.status}  side:${this.controller.preferredSide} · ? help · r refresh · c comment · n notes`,
+          `${this.controller.status}  side:${this.controller.preferredSide} · b sidebar · ? help · r refresh · c comment · n notes`,
           { fg: this.controller.status.startsWith("Refresh failed") ? COLORS.warning : COLORS.context },
         ),
       );

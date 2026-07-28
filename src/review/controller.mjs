@@ -16,6 +16,7 @@ export class ReviewController {
     this.rangeStart = null;
     this.rangeEnd = null;
     this.preferredSide = "new";
+    this.sidebarVisible = store.ui?.sidebarVisible ?? null;
     this.editor = null;
     this.refreshing = false;
     this.refreshQueued = false;
@@ -66,6 +67,7 @@ export class ReviewController {
         ui: {
           filePath: this.file?.path ?? null,
           rowId: this.row?.id ?? null,
+          sidebarVisible: this.sidebarVisible,
         },
       };
       this.store = saveStore(this.stateDir, this.store);
@@ -97,6 +99,22 @@ export class ReviewController {
     this.rowIndex = 0;
     this.rangeStart = null;
     this.rangeEnd = null;
+    this.persistUI();
+  }
+
+  selectFile(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.model.files.length) {
+      return;
+    }
+    this.fileIndex = index;
+    this.rowIndex = 0;
+    this.rangeStart = null;
+    this.rangeEnd = null;
+    this.persistUI();
+  }
+
+  toggleSidebar(defaultVisible = true) {
+    this.sidebarVisible = !(this.sidebarVisible ?? defaultVisible);
     this.persistUI();
   }
 
@@ -208,6 +226,7 @@ export class ReviewController {
       ui: {
         filePath: this.file.path,
         rowId: this.row?.id ?? null,
+        sidebarVisible: this.sidebarVisible,
       },
     });
   }

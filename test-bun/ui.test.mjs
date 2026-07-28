@@ -68,8 +68,12 @@ test("keyboard navigation, multiline paste, save, cancel, and resize preserve st
   await app.flush();
   app.mockInput.pressKey("s", { ctrl: true });
   await app.waitFor(() => app.controller.editor == null);
+  await app.flush();
   expect(app.controller.store.notes).toHaveLength(1);
   expect(app.controller.store.notes[0].body).toBe("Human note\nsecond line");
+  expect(app.captureCharFrame()).toContain("saved comment");
+  expect(app.captureCharFrame()).toContain("Human note");
+  expect(app.captureCharFrame()).toContain("second line");
 
   app.mockInput.pressKey("c");
   await app.waitFor(() => app.controller.editor != null);
@@ -99,12 +103,31 @@ test("keyboard navigation, multiline paste, save, cancel, and resize preserve st
   await app.ui.render();
   await app.flush();
   expect(app.controller.row.id).toBe(rowId);
-  expect(app.ui.files.visible).toBe(true);
+  expect(app.ui.files.visible).toBe(false);
 
   app.mockInput.pressKey("d");
   app.mockInput.pressKey("d");
   await app.waitFor(() => app.controller.store.notes.length === 0);
   expect(app.controller.store.notes).toHaveLength(0);
+});
+
+test("sidebar toggles without losing selection and file rows are not text-selectable", async () => {
+  const app = await setup();
+  const selectedFile = app.controller.file.id;
+  const fileRow = app.ui.files.findDescendantById(`file:${selectedFile}`);
+  expect(fileRow.selectable).toBe(false);
+
+  app.mockInput.pressKey("b");
+  await app.flush();
+  expect(app.ui.files.visible).toBe(false);
+  expect(app.controller.file.id).toBe(selectedFile);
+  expect(app.controller.store.ui.sidebarVisible).toBe(false);
+
+  app.mockInput.pressKey("b");
+  await app.flush();
+  expect(app.ui.files.visible).toBe(true);
+  expect(app.controller.file.id).toBe(selectedFile);
+  expect(app.controller.store.ui.sidebarVisible).toBe(true);
 });
 
 test("mouse row selection and range drag map to model row indexes", async () => {
