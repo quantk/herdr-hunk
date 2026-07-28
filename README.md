@@ -27,7 +27,8 @@ working. The runtime no longer invokes or requires Hunk.
 - Refreshes approximately once per second while preserving logical selection.
 - Navigates files, hunks, and old/new source lines by keyboard and mouse.
 - Highlights JavaScript, JSX, TypeScript, TSX, JSON, Markdown, HTML, CSS,
-  shell, Python, Go, Rust, YAML, and TOML with bundled Tree-sitter assets.
+  shell, Python, Kotlin, Java, Go, Rust, YAML, and TOML with bundled
+  Tree-sitter assets.
 - Saves only explicit human comments; unfinished editor text stays in memory.
 - Shows saved comment text inline beneath its anchored diff range.
 - Re-anchors comments deterministically after refresh or marks them stale

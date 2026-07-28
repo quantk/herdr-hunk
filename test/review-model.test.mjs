@@ -123,6 +123,11 @@ test("untracked patch and language detection cover supported forms", () => {
   assert.equal(model.files[0].path, "new file.py");
   assert.equal(model.files[0].rows[0].newLine, 1);
   assert.equal(detectFiletype("src/view.tsx"), "tsx");
+  assert.equal(detectFiletype("src/main/kotlin/App.kt"), "kotlin");
+  assert.equal(detectFiletype("build.gradle.kts"), "kotlin");
+  assert.equal(detectFiletype("src/main/java/App.java"), "java");
+  assert.equal(detectFiletype("src/main/python/app.py"), "python");
+  assert.equal(detectFiletype("cmd/server/main.go"), "go");
   assert.equal(detectFiletype("script", "#!/usr/bin/env python3"), "python");
   assert.equal(detectFiletype("unknown.data"), undefined);
   assert.equal(terminalSafeText("safe\u001b[31m"), "safe␛[31m");

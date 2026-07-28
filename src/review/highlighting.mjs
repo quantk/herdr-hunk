@@ -48,6 +48,14 @@ const BUNDLED = {
     wasm: "python/tree-sitter-python.wasm",
     highlights: "python/highlights.scm",
   },
+  kotlin: {
+    wasm: "kotlin/tree-sitter-kotlin.wasm",
+    highlights: "kotlin/highlights.scm",
+  },
+  java: {
+    wasm: "java/tree-sitter-java.wasm",
+    highlights: "java/highlights.scm",
+  },
   go: {
     wasm: "go/tree-sitter-go.wasm",
     highlights: "go/highlights.scm",

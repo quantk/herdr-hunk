@@ -188,6 +188,8 @@ describe("Tree-sitter packaged assets", () => {
       css: ".item { color: red; }",
       bash: "if true; then echo ok; fi",
       python: "def value(): return 1",
+      kotlin: "fun value(): Int = 1",
+      java: "class Value { int value() { return 1; } }",
       go: "package main\nfunc main() {}",
       rust: "fn main() {}",
       yaml: "value: true",
